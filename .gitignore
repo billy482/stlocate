@@ -1,0 +1,13 @@
+.*.swp
+bin/
+build/
+checksum/
+cscope.out
+depend/
+doc/
+lib/
+logs/
+stone.version
+tags
+test2/
+tmp*
