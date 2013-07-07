@@ -22,73 +22,15 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 07 Jul 2013 12:39:02 +0200                         *
+*  Last modified: Sun, 07 Jul 2013 15:01:27 +0200                         *
 \*************************************************************************/
 
-#define _GNU_SOURCE
-// bool
-#include <stdbool.h>
-// pthread_mutex_lock, pthread_mutex_unlock,
-#include <pthread.h>
-// dlclose, dlerror, dlopen
-#include <dlfcn.h>
-// glob
-#include <glob.h>
-// asprintf
-#include <stdio.h>
-// free
-#include <stdlib.h>
-// access
-#include <unistd.h>
+#ifndef __STLOCATE_LOG_P_H__
+#define __STLOCATE_LOG_P_H__
 
 #include <stlocate/log.h>
 
-#include "config.h"
-#include "loader.h"
+void sl_log_stop_logger(void);
 
-static void * sl_loader_load_file(const char * filename);
-
-static bool sl_loader_loaded = false;
-
-
-void * sl_loader_load(const char * module, const char * name) {
-	if (module == NULL || name == NULL)
-		return NULL;
-
-	char * path;
-	asprintf(&path, MODULE_PATH "/lib%s-%s.so", module, name);
-
-	void * cookie = sl_loader_load_file(path);
-
-	free(path);
-
-	return cookie;
-}
-
-static void * sl_loader_load_file(const char * filename) {
-	if (access(filename, R_OK | X_OK)) {
-		// st_log_write_all(st_log_level_debug, st_log_type_daemon, "Loader: access to file %s failed because %m", filename);
-		return NULL;
-	}
-
-	static pthread_mutex_t lock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
-	pthread_mutex_lock(&lock);
-
-	sl_loader_loaded = false;
-
-	void * cookie = dlopen(filename, RTLD_NOW);
-	if (cookie == NULL) {
-		// st_log_write_all(st_log_level_debug, st_log_type_daemon, "Loader: failed to load '%s' because %s", filename, dlerror());
-	} else if (!sl_loader_loaded) {
-		dlclose(cookie);
-		cookie = NULL;
-	}
-
-	pthread_mutex_unlock(&lock);
-	return cookie;
-}
-
-void sl_loader_register_ok(void) {
-	sl_loader_loaded = true;
-}
+#endif
 

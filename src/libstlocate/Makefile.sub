@@ -1,8 +1,8 @@
 LIBSTLOCATE_SRC_DIR			:= src/libstlocate
 
-LIBSTLOCATE_CFLAG			:= -fPIC
+LIBSTLOCATE_CFLAG			:= -fPIC -pthread
 LIBSTLOCATE_LIB				:= lib/libstlocate.so
-LIBSTLOCATE_LD				:= -shared
+LIBSTLOCATE_LD				:= -shared -pthread
 LIBSTLOCATE_SONAME			:= libstlocate.so.0
 LIBSTLOCATE_LIB_VERSION		:= 0.1
 
