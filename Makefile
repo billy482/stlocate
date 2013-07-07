@@ -88,8 +88,8 @@ $$($(1)_LIB): $$($(1)_DEPEND_LIB) $$($(1)_OBJ_FILES)
 #	@strip $$@.$$($(1)_LIB_VERSION)
 #	@objcopy --add-gnu-debuglink=$$@.$$($(1)_LIB_VERSION).debug $$@.$$($(1)_LIB_VERSION)
 #	@chmod -x $$@.$$($(1)_LIB_VERSION).debug
-#	@ln -sf $$(notdir $$@.$$($(1)_LIB_VERSION)) $$@.$$(basename $$($(1)_LIB_VERSION))
-#	@ln -sf $$($(1)_SONAME) $$@
+	@ln -sf $$(notdir $$@.$$($(1)_LIB_VERSION)) $$@.$$(basename $$($(1)_LIB_VERSION))
+	@ln -sf $$($(1)_SONAME) $$@
 
 $$($(1)_BUILD_DIR)/%.o: $$($(1)_SRC_DIR)/%.c
 	@echo " CC       $$@"
