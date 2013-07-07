@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 07 Jul 2013 11:24:56 +0200                         *
+*  Last modified: Sun, 07 Jul 2013 11:28:22 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -56,7 +56,7 @@ void * sl_loader_load(const char * module, const char * name) {
 	char * path;
 	asprintf(&path, MODULE_PATH "/lib%s-%s.so", module, name);
 
-	void * cookie = st_loader_load_file(path);
+	void * cookie = sl_loader_load_file(path);
 
 	free(path);
 
@@ -69,12 +69,12 @@ static void * sl_loader_load_file(const char * filename) {
 		return NULL;
 	}
 
-	st_loader_loaded = false;
+	sl_loader_loaded = false;
 
 	void * cookie = dlopen(filename, RTLD_NOW);
 	if (cookie == NULL) {
 		// st_log_write_all(st_log_level_debug, st_log_type_daemon, "Loader: failed to load '%s' because %s", filename, dlerror());
-	} else if (!st_loader_loaded) {
+	} else if (!sl_loader_loaded) {
 		dlclose(cookie);
 		cookie = NULL;
 	}
