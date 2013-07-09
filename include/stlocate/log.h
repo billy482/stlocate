@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 07 Jul 2013 13:55:10 +0200                         *
+*  Last modified: Tue, 09 Jul 2013 22:17:17 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_LOG_H__
@@ -150,7 +150,7 @@ struct sl_log_driver {
 	 *
 	 * \note Should be unique and equals to liblog-name.so where name is the name of driver.
 	 */
-	const char * name;
+	char * name;
 	/**
 	 * \brief Add a module to this driver
 	 *
@@ -179,46 +179,42 @@ struct sl_log_driver {
 	 */
 	const unsigned int api_level;
 	const char * src_checksum;
-
-	/**
-	 * \struct sl_log_module
-	 * \brief A log module
-	 */
-	struct sl_log_module {
-		/**
-		 * \brief Minimal level
-		 */
-		enum sl_log_level level;
-		/**
-		 * \struct st_log_module_ops
-		 * \brief Functions associated to a log module
-		 */
-		struct sl_log_module_ops {
-			/**
-			 * \brief release a module
-			 *
-			 * \param[in] module : release this module
-			 */
-			void (*free)(struct sl_log_module * module);
-			/**
-			 * \brief Write a message to a module
-			 *
-			 * \param[in] module : write to this module
-			 * \param[in] message : write this message
-			 */
-			void (*write)(struct sl_log_module * module, const struct sl_log_message * message);
-		} * ops;
-
-		/**
-		 * \brief Private data of a log module
-		 */
-		void * data;
-	} * modules;
-	/**
-	 * \brief Numbers of modules associated to this driver
-	 */
-	unsigned int nb_modules;
 };
+
+/**
+ * \struct sl_log_handler
+ * \brief A log module
+ */
+struct sl_log_handler {
+	/**
+	 * \brief Minimal level
+	 */
+	enum sl_log_level level;
+	/**
+	 * \struct st_log_module_ops
+	 * \brief Functions associated to a log module
+	 */
+	struct sl_log_handler_ops {
+		/**
+		 * \brief release a module
+		 *
+		 * \param[in] module : release this module
+		 */
+		void (*free)(struct sl_log_handler * module);
+		/**
+		 * \brief Write a message to a module
+		 *
+		 * \param[in] module : write to this module
+		 * \param[in] message : write this message
+		 */
+		void (*write)(struct sl_log_handler * module, const struct sl_log_message * message);
+	} * ops;
+
+	/**
+	 * \brief Private data of a log module
+	 */
+	void * data;
+} * modules;
 
 /**
  * \def STLOCATE_LOG_API_LEVEL
@@ -228,6 +224,8 @@ struct sl_log_driver {
  */
 #define STLOCATE_LOG_API_LEVEL 1
 
+
+void sl_log_add_handler(struct sl_log_handler * handler);
 
 /**
  * \brief Disable display remains messages.

@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 07 Jul 2013 15:52:44 +0200                         *
+*  Last modified: Tue, 09 Jul 2013 22:36:15 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -41,20 +41,24 @@
 // sleep
 #include <unistd.h>
 
+#include <stlocate/hashtable.h>
 #include <stlocate/thread_pool.h>
+#include <stlocate/string.h>
 
 #include "loader.h"
 #include "log.h"
 
 static void sl_log_exit(void) __attribute__((destructor));
+static void sl_log_init(void) __attribute__((constructor));
 static void sl_log_sent_message(void * arg);
 
 static bool sl_log_display_at_exit = true;
 static volatile bool sl_log_logger_running = false;
 static bool sl_log_finished = false;
 
-static struct sl_log_driver ** sl_log_drivers = NULL;
-static unsigned int sl_log_nb_drivers = 0;
+static struct sl_hashtable * sl_log_drivers = NULL;
+static struct sl_log_handler ** sl_log_handlers = NULL;
+static unsigned int sl_log_nb_handlers = 0;
 
 struct sl_log_message_unsent {
 	struct sl_log_message data;
@@ -93,8 +97,24 @@ static struct sl_log_type2 {
 };
 
 
+void sl_log_add_handler(struct sl_log_handler * handler) {
+	pthread_mutex_lock(&sl_log_lock);
+
+	void * new_addr = realloc(sl_log_handlers, (sl_log_nb_handlers + 1) * sizeof(struct sl_log_handler *));
+	if (new_addr != NULL) {
+		sl_log_handlers = new_addr;
+		sl_log_handlers[sl_log_nb_handlers] = handler;
+		sl_log_nb_handlers++;
+	}
+
+	pthread_mutex_unlock(&sl_log_lock);
+
+	if (new_addr == NULL)
+		sl_log_write(sl_log_level_err, sl_log_type_core, "Not enough memory for adding new log handler");
+}
+
 void sl_log_disable_display_log(void) {
-	sl_log_display_at_exit = 0;
+	sl_log_display_at_exit = false;
 }
 
 static void sl_log_exit(void) {
@@ -104,22 +124,8 @@ static void sl_log_exit(void) {
 			printf("%c: %s\n", sl_log_level_to_string(mes->data.level)[0], mes->data.message);
 	}
 
-	unsigned int i;
-	for (i = 0; i < sl_log_nb_drivers; i++) {
-		struct sl_log_driver * driver = sl_log_drivers[i];
-		unsigned int j;
-		for (j = 0; j < driver->nb_modules; j++) {
-			struct sl_log_module * mod = driver->modules + j;
-			mod->ops->free(mod);
-		}
-		free(driver->modules);
-		driver->modules = NULL;
-		driver->nb_modules = 0;
-	}
-
-	free(sl_log_drivers);
+	sl_hashtable_free(sl_log_drivers);
 	sl_log_drivers = NULL;
-	sl_log_nb_drivers = 0;
 
 	struct sl_log_message_unsent * message = sl_log_message_first;
 	sl_log_message_first = sl_log_message_last = NULL;
@@ -139,42 +145,42 @@ static void sl_log_exit(void) {
 
 struct sl_log_driver * sl_log_get_driver(const char * driver) {
 	if (driver == NULL) {
-		sl_log_write(sl_log_level_err, sl_log_type_core, "Get checksum driver with driver's name is NULL");
+		sl_log_write(sl_log_level_err, sl_log_type_core, "Get log driver with driver's name is NULL");
 		return NULL;
 	}
 
 	pthread_mutex_lock(&sl_log_lock);
 
-	unsigned int i;
+	struct sl_hashtable_value dr_val = sl_hashtable_get(sl_log_drivers, driver);
 	struct sl_log_driver * dr = NULL;
-	for (i = 0; i < sl_log_nb_drivers && dr == NULL; i++)
-		if (!strcmp(driver, sl_log_drivers[i]->name))
-			dr = sl_log_drivers[i];
-
-	if (dr == NULL) {
+	if (dr_val.type == sl_hashtable_value_null) {
 		void * cookie = sl_loader_load("log", driver);
 
-		if (dr == NULL && cookie == NULL) {
+		if (cookie == NULL) {
 			sl_log_write(sl_log_level_err, sl_log_type_core, "Log: Failed to load driver %s", driver);
 			pthread_mutex_unlock(&sl_log_lock);
 			return NULL;
 		}
 
-		for (i = 0; i < sl_log_nb_drivers && dr == NULL; i++)
-			if (!strcmp(driver, sl_log_drivers[i]->name)) {
-				dr = sl_log_drivers[i];
-				dr->cookie = cookie;
-
-				sl_log_write(sl_log_level_debug, sl_log_type_core, "Driver '%s' is now registred, src checksum: %s", driver, dr->src_checksum);
-			}
-
-		if (dr == NULL)
+		dr_val = sl_hashtable_get(sl_log_drivers, driver);
+		if (dr_val.type == sl_hashtable_value_null) {
 			sl_log_write(sl_log_level_err, sl_log_type_core, "Log: Driver %s not found", driver);
-	}
+		} else {
+			dr = dr_val.value.custom;
+			dr->cookie = cookie;
+
+			sl_log_write(sl_log_level_debug, sl_log_type_core, "Driver '%s' is now registred, src checksum: %s", driver, dr->src_checksum);
+		}
+	} else
+		dr = dr_val.value.custom;
 
 	pthread_mutex_unlock(&sl_log_lock);
 
 	return dr;
+}
+
+void sl_log_init() {
+	sl_log_drivers = sl_hashtable_new(sl_string_compute_hash);
 }
 
 const char * sl_log_level_to_string(enum sl_log_level level) {
@@ -188,7 +194,7 @@ const char * sl_log_level_to_string(enum sl_log_level level) {
 
 void sl_log_register_driver(struct sl_log_driver * driver) {
 	if (driver == NULL) {
-		sl_log_write(sl_log_level_err, sl_log_type_core, "Log: Try to register with driver=0");
+		sl_log_write(sl_log_level_err, sl_log_type_core, "Log: Try to register with driver=NULL");
 		return;
 	}
 
@@ -197,22 +203,12 @@ void sl_log_register_driver(struct sl_log_driver * driver) {
 		return;
 	}
 
-	unsigned int i;
-	for (i = 0; i < sl_log_nb_drivers; i++)
-		if (sl_log_drivers[i] == driver || !strcmp(driver->name, sl_log_drivers[i]->name)) {
-			sl_log_write(sl_log_level_info, sl_log_type_core, "Log: Driver '%s' is already registred", driver->name);
-			return;
-		}
-
-	void * new_addr = realloc(sl_log_drivers, (sl_log_nb_drivers + 1) * sizeof(struct sl_log_driver *));
-	if (new_addr == NULL) {
-		sl_log_write(sl_log_level_info, sl_log_type_core, "Driver '%s' cannot be registred because there is not enough memory", driver->name);
+	if (sl_hashtable_has_key(sl_log_drivers, driver->name)) {
+		sl_log_write(sl_log_level_info, sl_log_type_core, "Log: Driver '%s' is already registred", driver->name);
 		return;
 	}
 
-	sl_log_drivers = new_addr;
-	sl_log_drivers[sl_log_nb_drivers] = driver;
-	sl_log_nb_drivers++;
+	sl_hashtable_put(sl_log_drivers, driver->name, sl_hashtable_val_custom(driver));
 
 	sl_loader_register_ok();
 
@@ -234,11 +230,10 @@ static void sl_log_sent_message(void * arg __attribute__((unused))) {
 		while (message != NULL) {
 			unsigned int i;
 			struct sl_log_message * mes = &message->data;
-			for (i = 0; i < sl_log_nb_drivers; i++) {
-				unsigned int j;
-				for (j = 0; j < sl_log_drivers[i]->nb_modules; j++)
-					if (sl_log_drivers[i]->modules[j].level >= mes->level)
-						sl_log_drivers[i]->modules[j].ops->write(sl_log_drivers[i]->modules + j, mes);
+			for (i = 0; i < sl_log_nb_handlers; i++) {
+				struct sl_log_handler * lhle = sl_log_handlers[i];
+				if (lhle->level >= mes->level)
+					lhle->ops->write(lhle, mes);
 			}
 
 			struct sl_log_message_unsent * next = message->next;
@@ -256,7 +251,7 @@ static void sl_log_sent_message(void * arg __attribute__((unused))) {
 void sl_log_start_logger(void) {
 	pthread_mutex_lock(&sl_log_lock);
 
-	if (sl_log_nb_drivers == 0) {
+	if (sl_log_nb_handlers == 0) {
 		sl_log_write(sl_log_level_err, sl_log_type_core, "Start logger without log modules loaded");
 	} else if (!sl_log_logger_running) {
 		sl_log_logger_running = 1;

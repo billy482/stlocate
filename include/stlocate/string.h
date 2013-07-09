@@ -22,73 +22,67 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 07 Jul 2013 19:17:53 +0200                         *
+*  Last modified: Tue, 09 Jul 2013 22:35:52 +0200                         *
 \*************************************************************************/
 
-#define _GNU_SOURCE
+#ifndef __STLOCATE_STRING_H__
+#define __STLOCATE_STRING_H__
+
 // bool
 #include <stdbool.h>
-// pthread_mutex_lock, pthread_mutex_unlock,
-#include <pthread.h>
-// dlclose, dlerror, dlopen
-#include <dlfcn.h>
-// glob
-#include <glob.h>
-// asprintf
-#include <stdio.h>
-// free
-#include <stdlib.h>
-// access
-#include <unistd.h>
+// uint64_t
+#include <stdint.h>
 
-#include <stlocate/log.h>
+/**
+ * \brief Check if \a string is a valid utf8 string
+ *
+ * \param[in] string : a utf8 string
+ * \returns \b 1 if ok else 0
+ */
+bool sl_string_check_valid_utf8(const char * string);
 
-#include "config.h"
-#include "loader.h"
+/**
+ * \brief Compute hash of key
+ *
+ * \param[in] key : a c string
+ * \returns computed hash
+ *
+ * \see sl_hashtable_new
+ */
+uint64_t sl_string_compute_hash(const void * key);
 
-static void * sl_loader_load_file(const char * filename);
+/**
+ * \brief Remove from \a str a sequence of two or more of character \a delete_char
+ *
+ * \param[in,out] str : a string
+ * \param[in] delete_char : a character
+ */
+void sl_string_delete_double_char(char * str, char delete_char);
 
-static bool sl_loader_loaded = false;
+/**
+ * \brief Fix a UTF8 string by removing invalid character
+ *
+ * \param[in,out] string : a (in)valid UTF8 string
+ */
+void sl_string_fix_invalid_utf8(char * string);
 
+/**
+ * \brief Remove characters \a trim at the beginning and at the end of \a str
+ *
+ * \param[in,out] str : a string
+ * \param[in] trim : a character
+ */
+void sl_string_trim(char * str, char trim);
 
-void * sl_loader_load(const char * module, const char * name) {
-	if (module == NULL || name == NULL)
-		return NULL;
+/**
+ * \brief Remove characters \a trim at the end of \a str
+ *
+ * \param[in,out] str : a string
+ * \param[in] trim : a character
+ *
+ * \see sl_string_trim
+ */
+void sl_string_rtrim(char * str, char trim);
 
-	char * path;
-	asprintf(&path, MODULE_PATH "/lib%s-%s.so", module, name);
-
-	void * cookie = sl_loader_load_file(path);
-
-	free(path);
-
-	return cookie;
-}
-
-static void * sl_loader_load_file(const char * filename) {
-	if (access(filename, R_OK | X_OK)) {
-		sl_log_write(sl_log_level_debug, sl_log_type_core, "Loader: access to file %s failed because %m", filename);
-		return NULL;
-	}
-
-	static pthread_mutex_t lock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
-	pthread_mutex_lock(&lock);
-
-	sl_loader_loaded = false;
-
-	void * cookie = dlopen(filename, RTLD_NOW);
-	if (cookie == NULL) {
-		sl_log_write(sl_log_level_debug, sl_log_type_core, "Loader: failed to load '%s' because %s", filename, dlerror());
-	} else if (!sl_loader_loaded) {
-		dlclose(cookie);
-		cookie = NULL;
-	}
-
-	pthread_mutex_unlock(&lock);
-	return cookie;
-}
-
-void sl_loader_register_ok(void) {
-	sl_loader_loaded = true;
-}
+#endif
 
