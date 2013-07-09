@@ -1,0 +1,11 @@
+STLOCATE_LOG_FILE_SRC_DIR		:= src/plugins/log/file
+
+STLOCATE_LOG_FILE_BIN			:= lib/liblog-file.so
+STLOCATE_LOG_FILE_CFLAG			:= -pthread -fPIC -fvisibility=hidden
+STLOCATE_LOG_FILE_LD			:= -pthread -shared
+
+STLOCATE_LOG_FILE_DEPEND_LIB	:=
+
+STLOCATE_LOG_FILE_CHCKSUM_FILE	:= liblog-file.chcksum
+
+BIN_SYMS						+= STLOCATE_LOG_FILE
