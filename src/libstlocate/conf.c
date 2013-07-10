@@ -22,26 +22,22 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Wed, 10 Jul 2013 20:48:43 +0200                         *
+*  Last modified: Wed, 10 Jul 2013 21:02:36 +0200                         *
 \*************************************************************************/
 
-// strerror
-#include <errno.h>
 // open
 #include <fcntl.h>
 // free, malloc
 #include <malloc.h>
-// bool
-#include <stdbool.h>
-// snprintf, sscanf
+// sscanf
 #include <stdio.h>
-// strchp, strcmp, strerror, strlen, strncmp, strrchr
+// strchr
 #include <string.h>
 // fstat, open
 #include <sys/stat.h>
 // fstat, open
 #include <sys/types.h>
-// access, close, fstat, read, readlink, unlink, write
+// access, close, fstat, read
 #include <unistd.h>
 
 #include <stlocate/conf.h>
@@ -73,16 +69,18 @@ static void sl_conf_init(void) {
 
 int sl_conf_read_config(const char * conf_file) {
 	if (conf_file == NULL) {
-		sl_log_write(sl_log_level_err, sl_log_type_core, "Conf: read_config: conf_file is NULL");
+		sl_log_write(sl_log_level_err, sl_log_type_conf, "Conf: read_config: conf_file is NULL");
 		return -1;
 	}
 
 	if (access(conf_file, R_OK)) {
-		sl_log_write(sl_log_level_err, sl_log_type_core, "Conf: read_config: Can't access to '%s'", conf_file);
+		sl_log_write(sl_log_level_err, sl_log_type_conf, "Conf: read_config: Can't access to '%s'", conf_file);
 		return -1;
 	}
 
 	int fd = open(conf_file, O_RDONLY);
+
+	sl_log_write(sl_log_level_debug, sl_log_type_conf, "Opening config file '%s' = %d", conf_file, fd);
 
 	struct stat st;
 	fstat(fd, &st);
@@ -92,8 +90,10 @@ int sl_conf_read_config(const char * conf_file) {
 	close(fd);
 	buffer[nb_read] = '\0';
 
+	sl_log_write(sl_log_level_debug, sl_log_type_conf, "Reading %zd bytes from config file '%s'", nb_read, conf_file);
+
 	if (nb_read < 0) {
-		sl_log_write(sl_log_level_err, sl_log_type_core, "Conf: read_config: error while reading from '%s'", conf_file);
+		sl_log_write(sl_log_level_err, sl_log_type_conf, "Conf: read_config: error while reading from '%s'", conf_file);
 		free(buffer);
 		return 1;
 	}
@@ -145,8 +145,11 @@ int sl_conf_read_config(const char * conf_file) {
 
 	if (params->nb_elements > 0 && *section) {
 		sl_conf_callback_f f = sl_hashtable_get(sl_conf_callback, section).value.custom;
-		if (f != NULL)
+		if (f != NULL) {
+			sl_log_write(sl_log_level_info, sl_log_type_conf, "Section '%s' is managed by %p", section, f);
 			f(params);
+		} else
+			sl_log_write(sl_log_level_warn, sl_log_type_conf, "Section '%s' has no handler, section ignored", section);
 	}
 
 	sl_hashtable_free(params);
@@ -159,17 +162,18 @@ int sl_conf_read_config(const char * conf_file) {
 
 void sl_conf_register_callback(const char * section, sl_conf_callback_f callback) {
 	if (section == NULL || callback == NULL) {
-		sl_log_write(sl_log_level_err, sl_log_type_core, "Register callback function: error because");
+		sl_log_write(sl_log_level_err, sl_log_type_conf, "Register callback function: error because");
 
 		if (section == NULL)
-			sl_log_write(sl_log_level_err, sl_log_type_core, "section is NULL");
+			sl_log_write(sl_log_level_err, sl_log_type_conf, "section is NULL");
 
 		if (callback == NULL)
-			sl_log_write(sl_log_level_err, sl_log_type_core, "callback function is NULL");
+			sl_log_write(sl_log_level_err, sl_log_type_conf, "callback function is NULL");
 
 		return;
 	}
 
+	sl_log_write(sl_log_level_info, sl_log_type_conf, "Registring config handler { section: '%s', function: %p }", section, callback);
 	sl_hashtable_put(sl_conf_callback, strdup(section), sl_hashtable_val_custom(callback));
 }
 

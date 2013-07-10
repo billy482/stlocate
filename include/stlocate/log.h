@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 09 Jul 2013 23:07:00 +0200                         *
+*  Last modified: Wed, 10 Jul 2013 20:50:22 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_LOG_H__
@@ -97,6 +97,7 @@ enum sl_log_level {
  * \brief Enumerate type of message
  */
 enum sl_log_type {
+	sl_log_type_conf,
 	sl_log_type_core,
 	sl_log_type_database,
 	sl_log_type_plugin_log,

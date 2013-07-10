@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 09 Jul 2013 23:19:25 +0200                         *
+*  Last modified: Wed, 10 Jul 2013 20:50:39 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -90,6 +90,7 @@ static struct sl_log_type2 {
 	enum sl_log_type type;
 	const char * name;
 } sl_log_types[] = {
+	{ sl_log_type_conf,       "Conf" },
 	{ sl_log_type_core,       "Core" },
 	{ sl_log_type_database,   "Database" },
 	{ sl_log_type_plugin_log, "Plugin log" },
