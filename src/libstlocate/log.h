@@ -22,14 +22,16 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 07 Jul 2013 15:01:27 +0200                         *
+*  Last modified: Fri, 12 Jul 2013 21:14:27 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_LOG_P_H__
 #define __STLOCATE_LOG_P_H__
 
+#include <stlocate/conf.h>
 #include <stlocate/log.h>
 
+void sl_log_conf(const struct sl_hashtable * params);
 void sl_log_stop_logger(void);
 
 #endif

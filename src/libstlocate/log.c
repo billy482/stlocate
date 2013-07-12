@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Wed, 10 Jul 2013 20:50:39 +0200                         *
+*  Last modified: Fri, 12 Jul 2013 21:40:17 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -113,6 +113,31 @@ void sl_log_add_handler(struct sl_log_handler * handler) {
 
 	if (new_addr == NULL)
 		sl_log_write(sl_log_level_err, sl_log_type_core, "Not enough memory for adding new log handler");
+}
+
+void sl_log_conf(const struct sl_hashtable * params) {
+	struct sl_hashtable_value driver = sl_hashtable_get(params, "driver");
+	struct sl_hashtable_value verbosity = sl_hashtable_get(params, "verbosity");
+
+	if (driver.type == sl_hashtable_value_null || verbosity.type == sl_hashtable_value_null) {
+		if (driver.type == sl_hashtable_value_null)
+			sl_log_write(sl_log_level_err, sl_log_type_conf, "Log: a driver is required");
+		if (verbosity.type == sl_hashtable_value_null)
+			sl_log_write(sl_log_level_err, sl_log_type_conf, "Log: a verbosity level is required");
+		return;
+	}
+
+	enum sl_log_level level = sl_log_string_to_level(verbosity.value.string);
+	if (level == sl_log_level_unknown) {
+		sl_log_write(sl_log_level_err, sl_log_type_conf, "Log: verbosity level has illegal value '%s'", verbosity.value.string);
+		return;
+	}
+
+	struct sl_log_driver * dr = sl_log_get_driver(driver.value.string);
+	if (dr == NULL)
+		return;
+
+	dr->add(level, params);
 }
 
 void sl_log_disable_display_log(void) {
