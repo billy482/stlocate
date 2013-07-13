@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Fri, 12 Jul 2013 21:40:17 +0200                         *
+*  Last modified: Sat, 13 Jul 2013 12:31:05 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -119,10 +119,10 @@ void sl_log_conf(const struct sl_hashtable * params) {
 	struct sl_hashtable_value driver = sl_hashtable_get(params, "driver");
 	struct sl_hashtable_value verbosity = sl_hashtable_get(params, "verbosity");
 
-	if (driver.type == sl_hashtable_value_null || verbosity.type == sl_hashtable_value_null) {
-		if (driver.type == sl_hashtable_value_null)
+	if (driver.type != sl_hashtable_value_string || verbosity.type != sl_hashtable_value_string) {
+		if (driver.type != sl_hashtable_value_string)
 			sl_log_write(sl_log_level_err, sl_log_type_conf, "Log: a driver is required");
-		if (verbosity.type == sl_hashtable_value_null)
+		if (verbosity.type != sl_hashtable_value_string)
 			sl_log_write(sl_log_level_err, sl_log_type_conf, "Log: a verbosity level is required");
 		return;
 	}
@@ -134,10 +134,8 @@ void sl_log_conf(const struct sl_hashtable * params) {
 	}
 
 	struct sl_log_driver * dr = sl_log_get_driver(driver.value.string);
-	if (dr == NULL)
-		return;
-
-	dr->add(level, params);
+	if (dr != NULL)
+		dr->add(level, params);
 }
 
 void sl_log_disable_display_log(void) {
