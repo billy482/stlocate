@@ -22,11 +22,13 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 07 Jul 2013 15:51:35 +0200                         *
+*  Last modified: Sun, 14 Jul 2013 23:45:59 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
 #include <pthread.h>
+// bool
+#include <stdbool.h>
 // free, malloc, realloc
 #include <stdlib.h>
 // setpriority
@@ -51,6 +53,7 @@ struct sl_thread_pool_thread {
 	void (*function)(void * arg);
 	void * arg;
 	int nice;
+	bool want_exit;
 
 	volatile enum {
 		sl_thread_pool_state_exited,
@@ -73,11 +76,13 @@ static void sl_thread_pool_exit() {
 		struct sl_thread_pool_thread * th = sl_thread_pool_threads[i];
 
 		pthread_mutex_lock(&th->lock);
+		th->want_exit = true;
 		if (th->state == sl_thread_pool_state_waiting)
 			pthread_cond_signal(&th->wait);
 		pthread_mutex_unlock(&th->lock);
 
-		pthread_join(th->thread, NULL);
+		if (th->state == sl_thread_pool_state_running)
+			pthread_join(th->thread, NULL);
 
 		free(th);
 	}
@@ -104,6 +109,7 @@ int sl_thread_pool_run2(void (*function)(void * arg), void * arg, int nice) {
 			th->arg = arg;
 			th->nice = nice;
 			th->state = sl_thread_pool_state_running;
+			th->want_exit = false;
 
 			pthread_cond_signal(&th->wait);
 			pthread_mutex_unlock(&th->lock);
@@ -122,10 +128,11 @@ int sl_thread_pool_run2(void (*function)(void * arg), void * arg, int nice) {
 			th->arg = arg;
 			th->nice = nice;
 			th->state = sl_thread_pool_state_running;
+			th->want_exit = false;
 
 			pthread_attr_t attr;
 			pthread_attr_init(&attr);
-			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 			pthread_create(&th->thread, &attr, sl_thread_pool_work, th);
 
@@ -151,6 +158,7 @@ int sl_thread_pool_run2(void (*function)(void * arg), void * arg, int nice) {
 	th->arg = arg;
 	th->nice = nice;
 	th->state = sl_thread_pool_state_running;
+	th->want_exit = false;
 
 	pthread_mutex_init(&th->lock, NULL);
 	pthread_cond_init(&th->wait, NULL);
@@ -188,13 +196,15 @@ static void * sl_thread_pool_work(void * arg) {
 		th->arg = NULL;
 		th->state = sl_thread_pool_state_waiting;
 
-		struct timeval now;
-		struct timespec timeout;
-		gettimeofday(&now, NULL);
-		timeout.tv_sec = now.tv_sec + 300;
-		timeout.tv_nsec = now.tv_usec * 1000;
+		if (!th->want_exit) {
+			struct timeval now;
+			struct timespec timeout;
+			gettimeofday(&now, NULL);
+			timeout.tv_sec = now.tv_sec + 300;
+			timeout.tv_nsec = now.tv_usec * 1000;
 
-		pthread_cond_timedwait(&th->wait, &th->lock, &timeout);
+			pthread_cond_timedwait(&th->wait, &th->lock, &timeout);
+		}
 
 		if (th->state != sl_thread_pool_state_running)
 			th->state = sl_thread_pool_state_exited;
