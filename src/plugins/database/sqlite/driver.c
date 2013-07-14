@@ -22,17 +22,20 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 13 Jul 2013 23:58:08 +0200                         *
+*  Last modified: Sun, 14 Jul 2013 16:26:29 +0200                         *
 \*************************************************************************/
 
 // NULL
 #include <stddef.h>
 
 #include <stlocate/hashtable.h>
+#include <stlocate/log.h>
 
 #include "common.h"
 
 #include <libdatabase-sqlite.chcksum>
+
+static struct sl_database_config * sl_database_sqlite_default_config = NULL;
 
 static struct sl_database_config * sl_database_sqlite_add(const struct sl_hashtable * params);
 static struct sl_database_config * sl_database_sqlite_get_default_config(void);
@@ -53,11 +56,18 @@ static struct sl_database sl_database_sqlite = {
 
 
 static struct sl_database_config * sl_database_sqlite_add(const struct sl_hashtable * params) {
-	return sl_database_sqlite_config_add(&sl_database_sqlite, params);
+	struct sl_database_config * config = sl_database_sqlite_config_add(&sl_database_sqlite, params);
+
+	if (sl_database_sqlite_default_config == NULL && config != NULL) {
+		sl_database_sqlite_default_config = config;
+		sl_log_write(sl_log_level_info, sl_log_type_plugin_database, "Sqlite: set '%s' as new default config", config->name);
+	}
+
+	return config;
 }
 
 static struct sl_database_config * sl_database_sqlite_get_default_config() {
-	return NULL;
+	return sl_database_sqlite_default_config;
 }
 
 static void sl_database_sqlite_init(void) {

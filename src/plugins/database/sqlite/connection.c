@@ -22,13 +22,15 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 14 Jul 2013 15:40:46 +0200                         *
+*  Last modified: Sun, 14 Jul 2013 16:47:38 +0200                         *
 \*************************************************************************/
 
 // free, malloc
 #include <stdlib.h>
 // sqlite3_open
 #include <sqlite3.h>
+
+#include <stlocate/log.h>
 
 #include "common.h"
 
@@ -58,8 +60,10 @@ static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 struct sl_database_connection * sl_database_sqlite_connection_add(struct sl_database_config * config, const char * path) {
 	sqlite3 * handler = NULL;
 	int ret = sqlite3_open(path, &handler);
-	if (ret != SQLITE_OK)
+	if (ret != SQLITE_OK) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to open database at '%s'", path);
 		return NULL;
+	}
 
 	struct sl_database_sqlite_connection_private * self = malloc(sizeof(struct sl_database_sqlite_connection_private));
 	self->db_handler = handler;
@@ -69,6 +73,8 @@ struct sl_database_connection * sl_database_sqlite_connection_add(struct sl_data
 	connection->data = self;
 	connection->driver = config->driver;
 	connection->config = config;
+
+	sl_log_write(sl_log_level_info, sl_log_type_plugin_database, "Sqlite: open database at '%s', OK", path);
 
 	return connection;
 }
@@ -115,7 +121,12 @@ static int sl_database_sqlite_connection_cancel_transaction(struct sl_database_c
 	char * error = NULL;
 	int failed = sqlite3_exec(self->db_handler, "ROLLBACK", NULL, NULL, &error);
 
-	if (error)
+	if (failed)
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error when cancel transaction because %s", error);
+	else
+		sl_log_write(sl_log_level_notice, sl_log_type_plugin_database, "Sqlite: cancel transaction ok");
+
+	if (error != NULL)
 		sqlite3_free(error);
 
 	return failed != SQLITE_OK;
@@ -129,7 +140,12 @@ static int sl_database_sqlite_connection_finish_transaction(struct sl_database_c
 	char * error = NULL;
 	int failed = sqlite3_exec(self->db_handler, "COMMIT", NULL, NULL, &error);
 
-	if (error)
+	if (failed)
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error when finish transaction because %s", error);
+	else
+		sl_log_write(sl_log_level_notice, sl_log_type_plugin_database, "Sqlite: finish transaction ok");
+
+	if (error != NULL)
 		sqlite3_free(error);
 
 	return failed != SQLITE_OK;
@@ -143,7 +159,12 @@ static int sl_database_sqlite_connection_start_transaction(struct sl_database_co
 	char * error = NULL;
 	int failed = sqlite3_exec(self->db_handler, "BEGIN TRANSACTION", NULL, NULL, &error);
 
-	if (error)
+	if (failed)
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error when start transaction because %s", error);
+	else
+		sl_log_write(sl_log_level_notice, sl_log_type_plugin_database, "Sqlite: start transaction ok");
+
+	if (error != NULL)
 		sqlite3_free(error);
 
 	return failed != SQLITE_OK;

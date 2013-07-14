@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 14 Jul 2013 00:42:54 +0200                         *
+*  Last modified: Sun, 14 Jul 2013 16:41:06 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -58,9 +58,9 @@ struct sl_database_config * sl_database_sqlite_config_add(struct sl_database * d
 
 	if (storage.type != sl_hashtable_value_string || path.type != sl_hashtable_value_string) {
 		if (storage.type != sl_hashtable_value_string)
-			sl_log_write(sl_log_level_err, sl_log_type_database, "Sqlite: storage value is required");
+			sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: storage value is required");
 		if (path.type != sl_hashtable_value_string)
-			sl_log_write(sl_log_level_err, sl_log_type_database, "Sqlite: path value is required");
+			sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: path value is required");
 		return NULL;
 	}
 
@@ -72,6 +72,8 @@ struct sl_database_config * sl_database_sqlite_config_add(struct sl_database * d
 	config->ops = &sl_database_sqlite_config_ops;
 	config->data = self;
 	config->driver = driver;
+
+	sl_log_write(sl_log_level_info, sl_log_type_plugin_database, "Sqlite: new config defined { storage: '%s', path: '%s' }", storage.value.string, path.value.string);
 
 	return config;
 }
@@ -104,6 +106,11 @@ static int sl_database_sqlite_config_ping(struct sl_database_config * config) {
 
 	if (ret == SQLITE_OK)
 		sqlite3_close(db_handler);
+
+	if (ret == SQLITE_OK)
+		sl_log_write(sl_log_level_notice, sl_log_type_plugin_database, "Sqlite: ping database ok");
+	else
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: ping database failed");
 
 	return ret == SQLITE_OK;
 }
