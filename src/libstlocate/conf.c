@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 13 Jul 2013 12:27:31 +0200                         *
+*  Last modified: Sun, 14 Jul 2013 23:23:05 +0200                         *
 \*************************************************************************/
 
 // open
@@ -31,7 +31,7 @@
 #include <malloc.h>
 // sscanf
 #include <stdio.h>
-// strchr
+// strchr, strdup
 #include <string.h>
 // fstat, open
 #include <sys/stat.h>
@@ -66,8 +66,8 @@ static void sl_conf_free_key(void * key, void * value __attribute__((unused))) {
 
 static void sl_conf_init(void) {
 	sl_conf_callback = sl_hashtable_new2(sl_string_compute_hash, sl_conf_free_key);
-	sl_hashtable_put(sl_conf_callback, "database", sl_hashtable_val_custom(sl_database_conf));
-	sl_hashtable_put(sl_conf_callback, "log", sl_hashtable_val_custom(sl_log_conf));
+	sl_hashtable_put(sl_conf_callback, strdup("database"), sl_hashtable_val_custom(sl_database_conf));
+	sl_hashtable_put(sl_conf_callback, strdup("log"), sl_hashtable_val_custom(sl_log_conf));
 }
 
 int sl_conf_read_config(const char * conf_file) {
