@@ -48,7 +48,7 @@ LDFLAGS		:=
 CSCOPE_OPT	:= -b -R -s src -U -I include
 CTAGS_OPT	:= -R src
 
-VERSION_OPT		:= STONE stone.version
+VERSION_OPT		:= STLOCATE stlocate.version
 
 
 # sub makefiles
