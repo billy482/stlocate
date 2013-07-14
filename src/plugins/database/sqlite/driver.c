@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 14 Jul 2013 16:26:29 +0200                         *
+*  Last modified: Sun, 14 Jul 2013 19:14:51 +0200                         *
 \*************************************************************************/
 
 // NULL
@@ -39,11 +39,13 @@ static struct sl_database_config * sl_database_sqlite_default_config = NULL;
 
 static struct sl_database_config * sl_database_sqlite_add(const struct sl_hashtable * params);
 static struct sl_database_config * sl_database_sqlite_get_default_config(void);
+static int sl_database_sqlite_get_max_version_supported(void);
 static void sl_database_sqlite_init(void) __attribute__((constructor));
 
 static struct sl_database_ops sl_database_sqlite_ops = {
-	.add                = sl_database_sqlite_add,
-	.get_default_config = sl_database_sqlite_get_default_config,
+	.add                       = sl_database_sqlite_add,
+	.get_default_config        = sl_database_sqlite_get_default_config,
+	.get_max_version_supported = sl_database_sqlite_get_max_version_supported,
 };
 
 static struct sl_database sl_database_sqlite = {
@@ -68,6 +70,10 @@ static struct sl_database_config * sl_database_sqlite_add(const struct sl_hashta
 
 static struct sl_database_config * sl_database_sqlite_get_default_config() {
 	return sl_database_sqlite_default_config;
+}
+
+static int sl_database_sqlite_get_max_version_supported() {
+	return 1;
 }
 
 static void sl_database_sqlite_init(void) {

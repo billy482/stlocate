@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 14 Jul 2013 00:35:58 +0200                         *
+*  Last modified: Sun, 14 Jul 2013 20:20:33 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_DATABASE_H__
@@ -110,6 +110,11 @@ struct sl_database_connection {
 		 * \li < 0 if error
 		 */
 		int (*start_transaction)(struct sl_database_connection * connect);
+
+		int (*create_database)(struct sl_database_connection * connect, int version);
+		int (*get_database_version)(struct sl_database_connection * connect);
+
+		int (*get_host_by_name)(struct sl_database_connection * connect, const char * hostname);
 	} * ops;
 
 	/**
@@ -203,6 +208,8 @@ struct sl_database {
 		 * \brief Get default database configuration
 		 */
 		struct sl_database_config * (*get_default_config)(void);
+
+		int (*get_max_version_supported)(void);
 	} * ops;
 
 	/**
