@@ -22,12 +22,16 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 13 Jul 2013 20:39:17 +0200                         *
+*  Last modified: Sun, 14 Jul 2013 00:35:58 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_DATABASE_H__
 #define __STLOCATE_DATABASE_H__
 
+struct sl_hashtable;
+
+// bool
+#include <stdbool.h>
 // ssize_t
 #include <sys/types.h>
 
@@ -74,7 +78,7 @@ struct sl_database_connection {
 		 * \param[in] db a database connection
 		 * \return 0 if the connection is not closed
 		 */
-		int (*is_connection_closed)(struct sl_database_connection * connect);
+		bool (*is_connection_closed)(struct sl_database_connection * connect);
 
 		/**
 		 * \brief Rool back a transaction

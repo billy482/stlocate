@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 13 Jul 2013 20:40:42 +0200                         *
+*  Last modified: Sat, 13 Jul 2013 23:42:52 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -126,7 +126,7 @@ struct sl_database * sl_database_get_driver(const char * driver) {
 	struct sl_hashtable_value dr_val = sl_hashtable_get(sl_database_drivers, driver);
 	struct sl_database * dr = NULL;
 	if (dr_val.type == sl_hashtable_value_null) {
-		void * cookie = sl_loader_load("db", driver);
+		void * cookie = sl_loader_load("database", driver);
 
 		if (cookie == NULL) {
 			sl_log_write(sl_log_level_err, sl_log_type_database, "Failed to load driver %s", driver);
@@ -138,30 +138,13 @@ struct sl_database * sl_database_get_driver(const char * driver) {
 		if (dr_val.type == sl_hashtable_value_null) {
 			sl_log_write(sl_log_level_err, sl_log_type_core, "Database: Driver %s not found", driver);
 			pthread_mutex_unlock(&lock);
-		} else {
-		}
-	}
-
-	if (dr == NULL) {
-		void * cookie = sl_loader_load("db", driver);
-
-		if (cookie == NULL) {
-			sl_log_write(sl_log_level_err, sl_log_type_database, "Failed to load driver %s", driver);
-			pthread_mutex_unlock(&lock);
-			return NULL;
-		}
-
-		dr_val = sl_hashtable_get(sl_database_drivers, driver);
-		if (dr_val.type == sl_hashtable_value_null) {
-			sl_log_write(sl_log_level_err, sl_log_type_core, "Database: Driver %s not found", driver);
 		} else {
 			dr = dr_val.value.custom;
 			dr->cookie = cookie;
 
 			sl_log_write(sl_log_level_debug, sl_log_type_core, "Driver '%s' is now registred, src checksum: %s", driver, dr->src_checksum);
 		}
-	} else
-		dr = dr_val.value.custom;
+	}
 
 	pthread_mutex_unlock(&lock);
 

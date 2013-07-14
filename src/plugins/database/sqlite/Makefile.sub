@@ -1,0 +1,11 @@
+STLOCATE_DATABASE_SQLITE_SRC_DIR		:= src/plugins/database/sqlite
+
+STLOCATE_DATABASE_SQLITE_BIN			:= lib/libdatabase-sqlite.so
+STLOCATE_DATABASE_SQLITE_CFLAG			:= -pthread -fPIC -fvisibility=hidden
+STLOCATE_DATABASE_SQLITE_LD				:= -pthread -shared -lsqlite3
+
+STLOCATE_DATABASE_SQLITE_DEPEND_LIB		:=
+
+STLOCATE_DATABASE_SQLITE_CHCKSUM_FILE	:= libdatabase-sqlite.chcksum
+
+BIN_SYMS								+= STLOCATE_DATABASE_SQLITE
