@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 14 Jul 2013 20:20:33 +0200                         *
+*  Last modified: Mon, 15 Jul 2013 22:14:50 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_DATABASE_H__
@@ -114,7 +114,9 @@ struct sl_database_connection {
 		int (*create_database)(struct sl_database_connection * connect, int version);
 		int (*get_database_version)(struct sl_database_connection * connect);
 
+		int (*end_session)(struct sl_database_connection * connect, int session_id);
 		int (*get_host_by_name)(struct sl_database_connection * connect, const char * hostname);
+		int (*start_session)(struct sl_database_connection * connect);
 	} * ops;
 
 	/**

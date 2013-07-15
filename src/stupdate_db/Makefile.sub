@@ -1,0 +1,11 @@
+STUPDATE_DB_SRC_DIR			:= src/stupdate_db
+
+STUPDATE_DB_BIN				:= bin/stupdate_db
+STUPDATE_DB_CFLAG			:= -pthread
+STUPDATE_DB_LD				:= -pthread -Llib -lstlocate
+
+STUPDATE_DB_DEPEND_LIB		:= lib/libstlocate.so
+
+STUPDATE_DB_CHCKSUM_FILE	:= stupdate_db.chcksum
+
+BIN_SYMS					+= STUPDATE_DB

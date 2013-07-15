@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 14 Jul 2013 22:30:29 +0200                         *
+*  Last modified: Mon, 15 Jul 2013 22:32:16 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -50,7 +50,9 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 static int sl_database_sqlite_connection_create_table(sqlite3 * db, const char * table, const char * query);
 static int sl_database_sqlite_connection_get_database_version(struct sl_database_connection * connect);
 
+static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id);
 static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname);
+static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect);
 
 static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 	.close                = sl_database_sqlite_connection_close,
@@ -64,7 +66,9 @@ static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 	.create_database      = sl_database_sqlite_connection_create_database,
 	.get_database_version = sl_database_sqlite_connection_get_database_version,
 
+	.end_session      = sl_database_sqlite_connection_end_session,
 	.get_host_by_name = sl_database_sqlite_connection_get_host_by_name,
+	.start_session    = sl_database_sqlite_connection_start_session,
 };
 
 
@@ -192,7 +196,11 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 		return 1;
 	}
 
-	int failed = sl_database_sqlite_connection_create_table(self->db_handler, "host", "CREATE TABLE host (id INTEGER PRIMARY KEY, name TEXT)");
+	int failed = sl_database_sqlite_connection_create_table(self->db_handler, "host", "CREATE TABLE host (id INTEGER PRIMARY KEY, name TEXT UNIQUE)");
+	if (failed)
+		return failed;
+
+	failed = sl_database_sqlite_connection_create_table(self->db_handler, "session", "CREATE TABLE session (id INTEGER PRIMARY KEY, start_time INTEGER NOT NULL, end_time INTEGER NULL, CHECK (start_time <= end_time))");
 	if (failed)
 		return failed;
 
@@ -240,6 +248,25 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 }
 
 
+static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id) {
+	struct sl_database_sqlite_connection_private * self = connect->data;
+	if (self->db_handler == NULL)
+		return 1;
+
+	sqlite3_stmt * stmt_update;
+	static const char * query = "UPDATE session SET end_time = datetime('now') WHERE id = ?1";
+	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_update, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'update session'");
+		return -1;
+	}
+
+	sqlite3_bind_int(stmt_update, 1, session_id);
+	failed = sqlite3_step(stmt_update);
+
+	return failed != SQLITE_DONE;
+}
+
 static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname) {
 	struct sl_database_sqlite_connection_private * self = connect->data;
 	if (self->db_handler == NULL)
@@ -283,5 +310,26 @@ static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_con
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to get an host id");
 		return -3;
 	}
+}
+
+static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect) {
+	struct sl_database_sqlite_connection_private * self = connect->data;
+	if (self->db_handler == NULL)
+		return 1;
+
+	sqlite3_stmt * stmt_insert;
+	static const char * query = "INSERT INTO session(start_time) VALUES (datetime('now'))";
+	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_insert, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into session'");
+		return -1;
+	}
+
+	failed = sqlite3_step(stmt_insert);
+
+	int session_id = sqlite3_last_insert_rowid(self->db_handler);
+	sqlite3_finalize(stmt_insert);
+
+	return session_id;
 }
 
