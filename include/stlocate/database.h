@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Mon, 15 Jul 2013 22:14:50 +0200                         *
+*  Last modified: Tue, 16 Jul 2013 22:25:54 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_DATABASE_H__
@@ -35,6 +35,7 @@ struct sl_hashtable;
 // ssize_t
 #include <sys/types.h>
 
+struct sl_filesystem;
 
 /**
  * \struct sl_database_connection
@@ -117,6 +118,7 @@ struct sl_database_connection {
 		int (*end_session)(struct sl_database_connection * connect, int session_id);
 		int (*get_host_by_name)(struct sl_database_connection * connect, const char * hostname);
 		int (*start_session)(struct sl_database_connection * connect);
+		int (*sync_filesystem)(struct sl_database_connection * connect, struct sl_filesystem * fs);
 	} * ops;
 
 	/**

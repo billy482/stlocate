@@ -22,15 +22,35 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Mon, 15 Jul 2013 22:26:36 +0200                         *
+*  Last modified: Tue, 16 Jul 2013 22:32:14 +0200                         *
 \*************************************************************************/
 
 #include <stlocate/database.h>
+#include <stlocate/filesystem.h>
 #include <stlocate/log.h>
 
+// blkid_*
+#include <blkid/blkid.h>
+// free
+#include <stdlib.h>
+// strcmp
+#include <string.h>
+// stat
+#include <sys/stat.h>
+// stat
+#include <sys/types.h>
+// uname
 #include <sys/utsname.h>
+// stat
+#include <unistd.h>
 
 #include "common.h"
+
+static blkid_cache cache;
+
+static int sl_db_update_filesystem(struct sl_database_connection * db, int host_id, int session_id, const char * path);
+static void sl_db_update_init(void) __attribute__((constructor));
+
 
 int sl_db_update(struct sl_database_connection * db, int version __attribute__((unused))) {
 	struct utsname name;
@@ -51,6 +71,12 @@ int sl_db_update(struct sl_database_connection * db, int version __attribute__((
 		return failed;
 	}
 
+	failed = sl_db_update_filesystem(db, host_id, session_id, "/");
+	if (failed) {
+		db->ops->cancel_transaction(db);
+		return failed;
+	}
+
 	failed = db->ops->end_session(db, session_id);
 	if (failed) {
 		db->ops->cancel_transaction(db);
@@ -66,5 +92,46 @@ int sl_db_update(struct sl_database_connection * db, int version __attribute__((
 	}
 
 	return 0;
+}
+
+static int sl_db_update_filesystem(struct sl_database_connection * db, int host_id, int session_id, const char * path) {
+	struct stat st;
+	int failed = stat(path, &st);
+	if (failed)
+		return failed;
+
+	char * device = blkid_devno_to_devname(st.st_dev);
+
+	blkid_dev dev = blkid_get_dev(cache, device, 0);
+
+	const char * uuid = NULL;
+	const char * label = NULL;
+	const char * type = NULL;
+
+	blkid_tag_iterate iter = blkid_tag_iterate_begin(dev);
+	const char * key, * value;
+	while (!blkid_tag_next(iter, &key, &value)) {
+		if (!strcmp("UUID", key))
+			uuid = value;
+		else if (!strcmp("LABEL", key))
+			label = value;
+		else if (!strcmp("TYPE", key))
+			type = value;
+	}
+
+	struct sl_filesystem * fs = sl_filesystem_new(uuid, label, type);
+
+	blkid_tag_iterate_end(iter);
+	free(device);
+
+	failed = db->ops->sync_filesystem(db, fs);
+	if (failed)
+		return failed;
+
+	return 0;
+}
+
+static void sl_db_update_init() {
+	blkid_get_cache(&cache, NULL);
 }
 
