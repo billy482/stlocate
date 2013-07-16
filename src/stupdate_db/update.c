@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 16 Jul 2013 22:32:14 +0200                         *
+*  Last modified: Tue, 16 Jul 2013 23:56:36 +0200                         *
 \*************************************************************************/
 
 #include <stlocate/database.h>
@@ -37,6 +37,8 @@
 #include <string.h>
 // stat
 #include <sys/stat.h>
+// statfs
+#include <sys/statfs.h>
 // stat
 #include <sys/types.h>
 // uname
@@ -100,6 +102,11 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 	if (failed)
 		return failed;
 
+	struct statfs stfs;
+	failed = statfs(path, &stfs);
+	if (failed)
+		return failed;
+
 	char * device = blkid_devno_to_devname(st.st_dev);
 
 	blkid_dev dev = blkid_get_dev(cache, device, 0);
@@ -119,14 +126,14 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 			type = value;
 	}
 
-	struct sl_filesystem * fs = sl_filesystem_new(uuid, label, type);
+	struct sl_filesystem * fs = sl_filesystem_new(uuid, label, type, st.st_dev, path, stfs.f_bfree, stfs.f_blocks, stfs.f_bsize);
 
 	blkid_tag_iterate_end(iter);
 	free(device);
 
-	failed = db->ops->sync_filesystem(db, fs);
-	if (failed)
-		return failed;
+	int s2fs = db->ops->sync_filesystem(db, host_id, session_id, fs);
+	if (s2fs < 0)
+		return s2fs;
 
 	return 0;
 }

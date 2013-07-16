@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 16 Jul 2013 22:30:05 +0200                         *
+*  Last modified: Tue, 16 Jul 2013 23:49:43 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -54,7 +54,7 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id);
 static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname);
 static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect);
-static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, struct sl_filesystem * fs);
+static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, int host_id, int session_id, struct sl_filesystem * fs);
 
 static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 	.close                = sl_database_sqlite_connection_close,
@@ -211,6 +211,10 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 	if (failed)
 		return failed;
 
+	failed = sl_database_sqlite_connection_create_table(self->db_handler, "session2filesystem", "CREATE TABLE session2filesystem (id INTEGER PRIMARY KEY, session INTEGER NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE, filesystem INTEGER NOT NULL REFERENCES filesystem(id) ON UPDATE CASCADE ON DELETE CASCADE, host INTEGER NOT NULL REFERENCES host(id) ON UPDATE CASCADE ON DELETE CASCADE, mount_point TEXT NOT NULL, dev_no INTEGER NOT NULL CHECK (dev_no >= 0), disk_free INTEGER NOT NULL CHECK (disk_free >= 0), disk_total INTEGER NOT NULL CHECK (disk_total >= 0), block_size INTEGER NOT NULL CHECK (block_size >= 0), CHECK (disk_free <= disk_total))");
+	if (failed)
+		return failed;
+
 	return 0;
 }
 
@@ -340,7 +344,7 @@ static int sl_database_sqlite_connection_start_session(struct sl_database_connec
 	return session_id;
 }
 
-static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, struct sl_filesystem * fs) {
+static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, int host_id, int session_id, struct sl_filesystem * fs) {
 	struct sl_database_sqlite_connection_private * self = connect->data;
 	if (self->db_handler == NULL)
 		return 1;
@@ -359,7 +363,6 @@ static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_conn
 	if (failed == SQLITE_ROW) {
 		fs->id = sqlite3_column_int(stmt_select, 0);
 		sqlite3_finalize(stmt_select);
-		return 0;
 	} else if (failed == SQLITE_DONE) {
 		sqlite3_finalize(stmt_select);
 
@@ -377,13 +380,40 @@ static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_conn
 		sqlite3_bind_text(stmt_insert, 3, fs->type, -1, SQLITE_STATIC);
 		failed = sqlite3_step(stmt_insert);
 
-		fs->id = sqlite3_last_insert_rowid(self->db_handler);
+		if (failed == SQLITE_DONE)
+			fs->id = sqlite3_last_insert_rowid(self->db_handler);
 		sqlite3_finalize(stmt_insert);
-
-		return 0;
 	} else {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to get an host id");
 		return -3;
 	}
+
+	static const char * insert = "INSERT INTO session2filesystem(session, filesystem, host, mount_point, dev_no, disk_free, disk_total, block_size) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
+	sqlite3_stmt * stmt_insert;
+	failed = sqlite3_prepare_v2(self->db_handler, insert, -1, &stmt_insert, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into session2filesystem'");
+		sqlite3_finalize(stmt_select);
+		return -4;
+	}
+
+	sqlite3_bind_int(stmt_insert, 1, session_id);
+	sqlite3_bind_int(stmt_insert, 2, fs->id);
+	sqlite3_bind_int(stmt_insert, 3, host_id);
+	sqlite3_bind_text(stmt_insert, 4, fs->mount_point, -1, SQLITE_STATIC);
+	sqlite3_bind_int(stmt_insert, 5, fs->device);
+	sqlite3_bind_int(stmt_insert, 6, fs->disk_free);
+	sqlite3_bind_int(stmt_insert, 7, fs->disk_total);
+	sqlite3_bind_int(stmt_insert, 8, fs->block_size);
+	failed = sqlite3_step(stmt_insert);
+
+	if (failed != SQLITE_DONE) {
+		sqlite3_finalize(stmt_insert);
+		return -5;
+	}
+
+	int s2f_id = sqlite3_last_insert_rowid(self->db_handler);
+	sqlite3_finalize(stmt_insert);
+	return s2f_id;
 }
 

@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 16 Jul 2013 22:12:43 +0200                         *
+*  Last modified: Tue, 16 Jul 2013 23:12:19 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -39,7 +39,7 @@ void sl_filesystem_free(struct sl_filesystem * fs) {
 	free(fs);
 }
 
-struct sl_filesystem * sl_filesystem_new(const char * uuid, const char * label, const char * type) {
+struct sl_filesystem * sl_filesystem_new(const char * uuid, const char * label, const char * type, dev_t device, const char * mount_point, fsblkcnt_t disk_free, fsblkcnt_t disk_total, fsblkcnt_t block_size) {
 	struct sl_filesystem * fs = malloc(sizeof(struct sl_filesystem));
 	fs->id = -1;
 	fs->uuid = strdup(uuid);
@@ -47,6 +47,11 @@ struct sl_filesystem * sl_filesystem_new(const char * uuid, const char * label, 
 	if (label != NULL)
 		fs->label = strdup(label);
 	fs->type = strdup(type);
+	fs->device = device;
+	fs->mount_point = strdup(mount_point);
+	fs->disk_free = disk_free;
+	fs->disk_total = disk_total;
+	fs->block_size = block_size;
 	return fs;
 }
 

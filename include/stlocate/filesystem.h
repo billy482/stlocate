@@ -22,21 +22,30 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 16 Jul 2013 22:10:07 +0200                         *
+*  Last modified: Tue, 16 Jul 2013 23:11:24 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_FILESYSTEM_H__
 #define __STLOCATE_FILESYSTEM_H__
+
+// dev_t
+#include <sys/types.h>
 
 struct sl_filesystem {
 	int id;
 	char * uuid;
 	char * label;
 	char * type;
+
+	dev_t device;
+	char * mount_point;
+	fsblkcnt_t disk_free;
+	fsblkcnt_t disk_total;
+	fsblkcnt_t block_size;
 };
 
 void sl_filesystem_free(struct sl_filesystem * fs);
-struct sl_filesystem * sl_filesystem_new(const char * uuid, const char * label, const char * type);
+struct sl_filesystem * sl_filesystem_new(const char * uuid, const char * label, const char * type, dev_t device, const char * mount_point, fsblkcnt_t disk_free, fsblkcnt_t disk_total, fsblkcnt_t block_size);
 
 #endif
 
