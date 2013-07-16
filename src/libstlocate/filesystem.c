@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 16 Jul 2013 23:12:19 +0200                         *
+*  Last modified: Tue, 16 Jul 2013 23:57:39 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -36,6 +36,7 @@ void sl_filesystem_free(struct sl_filesystem * fs) {
 	free(fs->uuid);
 	free(fs->label);
 	free(fs->type);
+	free(fs->mount_point);
 	free(fs);
 }
 
