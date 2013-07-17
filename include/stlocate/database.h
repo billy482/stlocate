@@ -22,13 +22,14 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 16 Jul 2013 23:42:19 +0200                         *
+*  Last modified: Wed, 17 Jul 2013 22:28:50 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_DATABASE_H__
 #define __STLOCATE_DATABASE_H__
 
 struct sl_hashtable;
+struct stat;
 
 // bool
 #include <stdbool.h>
@@ -118,6 +119,7 @@ struct sl_database_connection {
 		int (*end_session)(struct sl_database_connection * connect, int session_id);
 		int (*get_host_by_name)(struct sl_database_connection * connect, const char * hostname);
 		int (*start_session)(struct sl_database_connection * connect);
+		int (*sync_file)(struct sl_database_connection * connect, int s2fs, const char * filename, struct stat * st);
 		int (*sync_filesystem)(struct sl_database_connection * connect, int host_id, int session_id, struct sl_filesystem * fs);
 	} * ops;
 

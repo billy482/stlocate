@@ -22,34 +22,42 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 16 Jul 2013 23:56:36 +0200                         *
+*  Last modified: Wed, 17 Jul 2013 23:02:23 +0200                         *
 \*************************************************************************/
+
+// asprintf, versionsort
+#define _GNU_SOURCE
+// blkid_*
+#include <blkid/blkid.h>
+// versionsort, scandir
+#include <dirent.h>
+// free
+#include <stdlib.h>
+// asprintf
+#include <stdio.h>
+// strcmp, strdup
+#include <string.h>
+// lstat
+#include <sys/stat.h>
+// statfs
+#include <sys/statfs.h>
+// lstat
+#include <sys/types.h>
+// uname
+#include <sys/utsname.h>
+// lstat
+#include <unistd.h>
 
 #include <stlocate/database.h>
 #include <stlocate/filesystem.h>
 #include <stlocate/log.h>
 
-// blkid_*
-#include <blkid/blkid.h>
-// free
-#include <stdlib.h>
-// strcmp
-#include <string.h>
-// stat
-#include <sys/stat.h>
-// statfs
-#include <sys/statfs.h>
-// stat
-#include <sys/types.h>
-// uname
-#include <sys/utsname.h>
-// stat
-#include <unistd.h>
-
 #include "common.h"
 
 static blkid_cache cache;
 
+static int sl_db_update_file(struct sl_database_connection * db, int host_id, int session_id, int s2fs, const char * root, const char * path);
+static int sl_db_update_file_filter(const struct dirent * file);
 static int sl_db_update_filesystem(struct sl_database_connection * db, int host_id, int session_id, const char * path);
 static void sl_db_update_init(void) __attribute__((constructor));
 
@@ -96,6 +104,72 @@ int sl_db_update(struct sl_database_connection * db, int version __attribute__((
 	return 0;
 }
 
+static int sl_db_update_file(struct sl_database_connection * db, int host_id, int session_id, int s2fs, const char * root, const char * path) {
+	char * file;
+	if (path != NULL)
+		asprintf(&file, "%s/%s", !strcmp("/", root) ? "" : root, path);
+	else
+		file = strdup(root);
+
+	struct stat sfile;
+	int failed = lstat(file, &sfile);
+	if (failed) {
+		free(file);
+		return failed;
+	}
+
+	failed = db->ops->sync_file(db, s2fs, path != NULL ? path : "/", &sfile);
+
+	if (S_ISDIR(sfile.st_mode)) {
+		struct dirent ** nl = NULL;
+		int i, nb_files = scandir(file, &nl, sl_db_update_file_filter, versionsort);
+		for (i = 0; i < nb_files; i++) {
+			if (!failed) {
+				char * subfile = NULL;
+				if (path != NULL)
+					asprintf(&subfile, "%s/%s/%s", !strcmp("/", root) ? "" : root, path, nl[i]->d_name);
+				else
+					asprintf(&subfile, "%s/%s", !strcmp("/", root) ? "" : root, nl[i]->d_name);
+
+				struct stat ssubfile;
+				failed = lstat(subfile, &ssubfile);
+
+				if (!failed) {
+					if (sfile.st_dev != ssubfile.st_dev)
+						failed = sl_db_update_filesystem(db, host_id, session_id, subfile);
+					else {
+						free(subfile);
+						if (path != NULL)
+							asprintf(&subfile, "%s/%s", path, nl[i]->d_name);
+						else
+							subfile = strdup(nl[i]->d_name);
+						failed = sl_db_update_file(db, host_id, session_id, s2fs, root, subfile);
+					}
+				}
+
+				free(subfile);
+			}
+
+			free(nl[i]);
+		}
+		free(nl);
+	}
+
+	free(file);
+
+	return 0;
+}
+
+static int sl_db_update_file_filter(const struct dirent * file) {
+	if (file->d_name[0] != '.')
+		return 1;
+
+	if (file->d_name[1] == '\0')
+		return 0;
+
+	return file->d_name[1] != '.' || file->d_name[2] != '\0';
+}
+
 static int sl_db_update_filesystem(struct sl_database_connection * db, int host_id, int session_id, const char * path) {
 	struct stat st;
 	int failed = stat(path, &st);
@@ -108,6 +182,8 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 		return failed;
 
 	char * device = blkid_devno_to_devname(st.st_dev);
+	if (device == NULL)
+		return 0;
 
 	blkid_dev dev = blkid_get_dev(cache, device, 0);
 
@@ -132,10 +208,16 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 	free(device);
 
 	int s2fs = db->ops->sync_filesystem(db, host_id, session_id, fs);
-	if (s2fs < 0)
+	if (s2fs < 0) {
+		sl_filesystem_free(fs);
 		return s2fs;
+	}
 
-	return 0;
+	failed = sl_db_update_file(db, host_id, session_id, s2fs, path, NULL);
+
+	sl_filesystem_free(fs);
+
+	return failed;
 }
 
 static void sl_db_update_init() {
