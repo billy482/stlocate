@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Wed, 17 Jul 2013 23:02:23 +0200                         *
+*  Last modified: Thu, 18 Jul 2013 22:22:23 +0200                         *
 \*************************************************************************/
 
 // asprintf, versionsort
@@ -56,7 +56,7 @@
 
 static blkid_cache cache;
 
-static int sl_db_update_file(struct sl_database_connection * db, int host_id, int session_id, int s2fs, const char * root, const char * path);
+static int sl_db_update_file(struct sl_database_connection * db, int host_id, int session_id, int s2fs, const char * root, const char * path, struct stat * st);
 static int sl_db_update_file_filter(const struct dirent * file);
 static int sl_db_update_filesystem(struct sl_database_connection * db, int host_id, int session_id, const char * path);
 static void sl_db_update_init(void) __attribute__((constructor));
@@ -104,23 +104,16 @@ int sl_db_update(struct sl_database_connection * db, int version __attribute__((
 	return 0;
 }
 
-static int sl_db_update_file(struct sl_database_connection * db, int host_id, int session_id, int s2fs, const char * root, const char * path) {
+static int sl_db_update_file(struct sl_database_connection * db, int host_id, int session_id, int s2fs, const char * root, const char * path, struct stat * sfile) {
 	char * file;
 	if (path != NULL)
 		asprintf(&file, "%s/%s", !strcmp("/", root) ? "" : root, path);
 	else
 		file = strdup(root);
 
-	struct stat sfile;
-	int failed = lstat(file, &sfile);
-	if (failed) {
-		free(file);
-		return failed;
-	}
+	int failed = db->ops->sync_file(db, s2fs, path != NULL ? path : "/", sfile);
 
-	failed = db->ops->sync_file(db, s2fs, path != NULL ? path : "/", &sfile);
-
-	if (S_ISDIR(sfile.st_mode)) {
+	if (S_ISDIR(sfile->st_mode)) {
 		struct dirent ** nl = NULL;
 		int i, nb_files = scandir(file, &nl, sl_db_update_file_filter, versionsort);
 		for (i = 0; i < nb_files; i++) {
@@ -135,7 +128,7 @@ static int sl_db_update_file(struct sl_database_connection * db, int host_id, in
 				failed = lstat(subfile, &ssubfile);
 
 				if (!failed) {
-					if (sfile.st_dev != ssubfile.st_dev)
+					if (sfile->st_dev != ssubfile.st_dev)
 						failed = sl_db_update_filesystem(db, host_id, session_id, subfile);
 					else {
 						free(subfile);
@@ -143,7 +136,7 @@ static int sl_db_update_file(struct sl_database_connection * db, int host_id, in
 							asprintf(&subfile, "%s/%s", path, nl[i]->d_name);
 						else
 							subfile = strdup(nl[i]->d_name);
-						failed = sl_db_update_file(db, host_id, session_id, s2fs, root, subfile);
+						failed = sl_db_update_file(db, host_id, session_id, s2fs, root, subfile, &ssubfile);
 					}
 				}
 
@@ -213,7 +206,7 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 		return s2fs;
 	}
 
-	failed = sl_db_update_file(db, host_id, session_id, s2fs, path, NULL);
+	failed = sl_db_update_file(db, host_id, session_id, s2fs, path, NULL, &st);
 
 	sl_filesystem_free(fs);
 
