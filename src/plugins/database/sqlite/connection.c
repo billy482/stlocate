@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Wed, 17 Jul 2013 23:15:26 +0200                         *
+*  Last modified: Thu, 18 Jul 2013 20:40:01 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -224,8 +224,25 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 		return failed;
 
 	failed = sl_database_sqlite_connection_create_table(self->db_handler, "filesystem", "CREATE TABLE file2session (s2fs INTEGER NOT NULL REFERENCES session2filesystem(id) ON UPDATE CASCADE ON DELETE CASCADE, file INTEGER NOT NULL REFERENCES file(id) ON UPDATE CASCADE ON DELETE CASCADE, mode INTEGER NOT NULL CHECK (mode >= 0), uid INTEGER NOT NULL CHECK (uid >= 0), gid INTEGER NOT NULL CHECK (gid >= 0), size INTEGER NOT NULL CHECK (size >= 0), access_time INTEGER NOT NULL, modif_time INTEGER NOT NULL)");
+	if (failed)
+		return failed;
 
-	return failed;
+	failed = sl_database_sqlite_connection_create_table(self->db_handler, "config", "CREATE TABLE config (key TEXT NOT NULL UNIQUE, VALUE TEXT)");
+	if (failed)
+		return failed;
+
+	sqlite3_stmt * stmt_insert;
+	static const char * query = "INSERT INTO config VALUES ('version', '1')";
+	failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_insert, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into config'");
+		return failed;
+	}
+
+	failed = sqlite3_step(stmt_insert);
+	sqlite3_finalize(stmt_insert);
+
+	return (failed != SQLITE_DONE);
 }
 
 static int sl_database_sqlite_connection_create_table(sqlite3 * db, const char * table, const char * query) {
@@ -254,7 +271,7 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 	}
 
 	failed = sqlite3_step(smt);
-	if (failed != SQLITE_OK) {
+	if (failed != SQLITE_ROW) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to execute prepared query '%s'", query);
 		sqlite3_finalize(smt);
 		return -1;
