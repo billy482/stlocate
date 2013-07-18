@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Thu, 18 Jul 2013 22:22:23 +0200                         *
+*  Last modified: Thu, 18 Jul 2013 22:36:22 +0200                         *
 \*************************************************************************/
 
 // asprintf, versionsort
@@ -73,6 +73,7 @@ int sl_db_update(struct sl_database_connection * db, int version __attribute__((
 		sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to start new transaction");
 		return failed;
 	}
+	sl_log_write(sl_log_level_info, sl_log_type_core, "Start new transaction: OK");
 
 	int session_id = db->ops->start_session(db);
 	if (session_id < 0) {
@@ -80,12 +81,15 @@ int sl_db_update(struct sl_database_connection * db, int version __attribute__((
 		sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to create new session");
 		return failed;
 	}
+	sl_log_write(sl_log_level_info, sl_log_type_core, "Create new session, id: %d", session_id);
 
+	sl_log_write(sl_log_level_info, sl_log_type_core, "Start update db");
 	failed = sl_db_update_filesystem(db, host_id, session_id, "/");
 	if (failed) {
 		db->ops->cancel_transaction(db);
 		return failed;
 	}
+	sl_log_write(sl_log_level_info, sl_log_type_core, "Start update db, finished with status %d", failed);
 
 	failed = db->ops->end_session(db, session_id);
 	if (failed) {
@@ -93,6 +97,7 @@ int sl_db_update(struct sl_database_connection * db, int version __attribute__((
 		sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to finish current session");
 		return failed;
 	}
+	sl_log_write(sl_log_level_info, sl_log_type_core, "Finish session: OK");
 
 	failed = db->ops->finish_transaction(db);
 	if (failed) {
@@ -100,6 +105,7 @@ int sl_db_update(struct sl_database_connection * db, int version __attribute__((
 		sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to commit current transaction");
 		return failed;
 	}
+	sl_log_write(sl_log_level_info, sl_log_type_core, "Commit current transaction: OK");
 
 	return 0;
 }
@@ -112,6 +118,11 @@ static int sl_db_update_file(struct sl_database_connection * db, int host_id, in
 		file = strdup(root);
 
 	int failed = db->ops->sync_file(db, s2fs, path != NULL ? path : "/", sfile);
+	if (failed) {
+		free(file);
+		sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to synchronize file with database, { root: %s, path: %s }", root, path);
+		return failed;
+	}
 
 	if (S_ISDIR(sfile->st_mode)) {
 		struct dirent ** nl = NULL;
@@ -175,8 +186,12 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 		return failed;
 
 	char * device = blkid_devno_to_devname(st.st_dev);
-	if (device == NULL)
+	if (device == NULL) {
+		sl_log_write(sl_log_level_notice, sl_log_type_core, "Skip path: { path: %s } because it is not a block device", path);
 		return 0;
+	}
+
+	sl_log_write(sl_log_level_notice, sl_log_type_core, "Update filesystem: { path: %s }", path);
 
 	blkid_dev dev = blkid_get_dev(cache, device, 0);
 
