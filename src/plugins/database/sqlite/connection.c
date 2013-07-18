@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Thu, 18 Jul 2013 20:40:01 +0200                         *
+*  Last modified: Fri, 19 Jul 2013 00:17:38 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -55,9 +55,9 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 
 static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id);
 static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname);
-static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect);
+static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect, int host_id);
 static int sl_database_sqlite_connection_sync_file(struct sl_database_connection * connect, int s2fs, const char * filename, struct stat * st);
-static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, int host_id, int session_id, struct sl_filesystem * fs);
+static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, int session_id, struct sl_filesystem * fs);
 
 static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 	.close                = sl_database_sqlite_connection_close,
@@ -207,7 +207,7 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 	if (failed)
 		return failed;
 
-	failed = sl_database_sqlite_connection_create_table(self->db_handler, "session", "CREATE TABLE session (id INTEGER PRIMARY KEY, start_time INTEGER NOT NULL, end_time INTEGER NULL, CHECK (start_time <= end_time))");
+	failed = sl_database_sqlite_connection_create_table(self->db_handler, "session", "CREATE TABLE session (id INTEGER PRIMARY KEY, start_time INTEGER NOT NULL, end_time INTEGER NULL, host INTEGER NOT NULL REFERENCES host(id) ON UPDATE CASCADE ON DELETE CASCADE, CHECK (start_time <= end_time))");
 	if (failed)
 		return failed;
 
@@ -215,7 +215,7 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 	if (failed)
 		return failed;
 
-	failed = sl_database_sqlite_connection_create_table(self->db_handler, "session2filesystem", "CREATE TABLE session2filesystem (id INTEGER PRIMARY KEY, session INTEGER NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE, filesystem INTEGER NOT NULL REFERENCES filesystem(id) ON UPDATE CASCADE ON DELETE CASCADE, host INTEGER NOT NULL REFERENCES host(id) ON UPDATE CASCADE ON DELETE CASCADE, mount_point TEXT NOT NULL, dev_no INTEGER NOT NULL CHECK (dev_no >= 0), disk_free INTEGER NOT NULL CHECK (disk_free >= 0), disk_total INTEGER NOT NULL CHECK (disk_total >= 0), block_size INTEGER NOT NULL CHECK (block_size >= 0), CHECK (disk_free <= disk_total))");
+	failed = sl_database_sqlite_connection_create_table(self->db_handler, "session2filesystem", "CREATE TABLE session2filesystem (id INTEGER PRIMARY KEY, session INTEGER NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE, filesystem INTEGER NOT NULL REFERENCES filesystem(id) ON UPDATE CASCADE ON DELETE CASCADE, mount_point TEXT NOT NULL, dev_no INTEGER NOT NULL CHECK (dev_no >= 0), disk_free INTEGER NOT NULL CHECK (disk_free >= 0), disk_total INTEGER NOT NULL CHECK (disk_total >= 0), block_size INTEGER NOT NULL CHECK (block_size >= 0), CHECK (disk_free <= disk_total))");
 	if (failed)
 		return failed;
 
@@ -223,7 +223,7 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 	if (failed)
 		return failed;
 
-	failed = sl_database_sqlite_connection_create_table(self->db_handler, "filesystem", "CREATE TABLE file2session (s2fs INTEGER NOT NULL REFERENCES session2filesystem(id) ON UPDATE CASCADE ON DELETE CASCADE, file INTEGER NOT NULL REFERENCES file(id) ON UPDATE CASCADE ON DELETE CASCADE, mode INTEGER NOT NULL CHECK (mode >= 0), uid INTEGER NOT NULL CHECK (uid >= 0), gid INTEGER NOT NULL CHECK (gid >= 0), size INTEGER NOT NULL CHECK (size >= 0), access_time INTEGER NOT NULL, modif_time INTEGER NOT NULL)");
+	failed = sl_database_sqlite_connection_create_table(self->db_handler, "file2session", "CREATE TABLE file2session (s2fs INTEGER NOT NULL REFERENCES session2filesystem(id) ON UPDATE CASCADE ON DELETE CASCADE, file INTEGER NOT NULL REFERENCES file(id) ON UPDATE CASCADE ON DELETE CASCADE, mode INTEGER NOT NULL CHECK (mode >= 0), uid INTEGER NOT NULL CHECK (uid >= 0), gid INTEGER NOT NULL CHECK (gid >= 0), size INTEGER NOT NULL CHECK (size >= 0), access_time INTEGER NOT NULL, modif_time INTEGER NOT NULL)");
 	if (failed)
 		return failed;
 
@@ -350,19 +350,20 @@ static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_con
 	}
 }
 
-static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect) {
+static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect, int host_id) {
 	struct sl_database_sqlite_connection_private * self = connect->data;
 	if (self->db_handler == NULL)
 		return 1;
 
 	sqlite3_stmt * stmt_insert;
-	static const char * query = "INSERT INTO session(start_time) VALUES (datetime('now'))";
+	static const char * query = "INSERT INTO session(start_time, host) VALUES (datetime('now'), ?1)";
 	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_insert, NULL);
 	if (failed) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into session'");
 		return -1;
 	}
 
+	sqlite3_bind_int(stmt_insert, 1, host_id);
 	failed = sqlite3_step(stmt_insert);
 
 	int session_id = sqlite3_last_insert_rowid(self->db_handler);
@@ -385,12 +386,12 @@ static int sl_database_sqlite_connection_sync_file(struct sl_database_connection
 	}
 
 	sqlite3_bind_text(stmt_select, 1, filename, -1, SQLITE_STATIC);
-	sqlite3_bind_int(stmt_select, 2, st->st_ino);
+	sqlite3_bind_int64(stmt_select, 2, st->st_ino);
 
-	int file_id = -1;
+	long long file_id = -1;
 	failed = sqlite3_step(stmt_select);
 	if (failed == SQLITE_ROW) {
-		file_id = sqlite3_column_int(stmt_select, 0);
+		file_id = sqlite3_column_int64(stmt_select, 0);
 		sqlite3_finalize(stmt_select);
 	} else if (failed == SQLITE_DONE) {
 		sqlite3_finalize(stmt_select);
@@ -405,16 +406,22 @@ static int sl_database_sqlite_connection_sync_file(struct sl_database_connection
 		}
 
 		sqlite3_bind_text(stmt_insert, 1, filename, -1, SQLITE_STATIC);
-		sqlite3_bind_int(stmt_insert, 2, st->st_ino);
+		sqlite3_bind_int64(stmt_insert, 2, st->st_ino);
 		failed = sqlite3_step(stmt_insert);
 
 		if (failed == SQLITE_DONE)
 			file_id = sqlite3_last_insert_rowid(self->db_handler);
+		else
+			sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to insert new file (path: %s, inode: %ld)", filename, st->st_ino);
+
 		sqlite3_finalize(stmt_insert);
 	} else {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to get a file id");
 		return -3;
 	}
+
+	if (file_id < 0)
+		return -4;
 
 	static const char * insert = "INSERT INTO file2session(s2fs, file, mode, uid, gid, size, access_time, modif_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime(?7, 'unixepoch'), datetime(?8, 'unixepoch'))";
 	sqlite3_stmt * stmt_insert;
@@ -425,23 +432,26 @@ static int sl_database_sqlite_connection_sync_file(struct sl_database_connection
 		return -4;
 	}
 
-	sqlite3_bind_int(stmt_insert, 1, s2fs);
-	sqlite3_bind_int(stmt_insert, 2, file_id);
+	sqlite3_bind_int64(stmt_insert, 1, s2fs);
+	sqlite3_bind_int64(stmt_insert, 2, file_id);
 	sqlite3_bind_int(stmt_insert, 3, st->st_mode);
 	sqlite3_bind_int(stmt_insert, 4, st->st_uid);
 	sqlite3_bind_int(stmt_insert, 5, st->st_gid);
-	sqlite3_bind_int(stmt_insert, 6, st->st_size);
-	sqlite3_bind_int(stmt_insert, 7, st->st_atime);
-	sqlite3_bind_int(stmt_insert, 8, st->st_mtime);
+	sqlite3_bind_int64(stmt_insert, 6, st->st_size);
+	sqlite3_bind_int64(stmt_insert, 7, st->st_atime);
+	sqlite3_bind_int64(stmt_insert, 8, st->st_mtime);
 
 	failed = sqlite3_step(stmt_insert);
+
+	if (failed != SQLITE_DONE)
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to insert new file2session (file id: %lld, session id: %d)", file_id, s2fs);
 
 	sqlite3_finalize(stmt_insert);
 
 	return failed != SQLITE_DONE;
 }
 
-static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, int host_id, int session_id, struct sl_filesystem * fs) {
+static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, int session_id, struct sl_filesystem * fs) {
 	struct sl_database_sqlite_connection_private * self = connect->data;
 	if (self->db_handler == NULL)
 		return 1;
@@ -485,7 +495,7 @@ static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_conn
 		return -3;
 	}
 
-	static const char * insert = "INSERT INTO session2filesystem(session, filesystem, host, mount_point, dev_no, disk_free, disk_total, block_size) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
+	static const char * insert = "INSERT INTO session2filesystem(session, filesystem, mount_point, dev_no, disk_free, disk_total, block_size) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
 	sqlite3_stmt * stmt_insert;
 	failed = sqlite3_prepare_v2(self->db_handler, insert, -1, &stmt_insert, NULL);
 	if (failed) {
@@ -496,12 +506,11 @@ static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_conn
 
 	sqlite3_bind_int(stmt_insert, 1, session_id);
 	sqlite3_bind_int(stmt_insert, 2, fs->id);
-	sqlite3_bind_int(stmt_insert, 3, host_id);
-	sqlite3_bind_text(stmt_insert, 4, fs->mount_point, -1, SQLITE_STATIC);
-	sqlite3_bind_int(stmt_insert, 5, fs->device);
-	sqlite3_bind_int(stmt_insert, 6, fs->disk_free);
-	sqlite3_bind_int(stmt_insert, 7, fs->disk_total);
-	sqlite3_bind_int(stmt_insert, 8, fs->block_size);
+	sqlite3_bind_text(stmt_insert, 3, fs->mount_point, -1, SQLITE_STATIC);
+	sqlite3_bind_int(stmt_insert, 4, fs->device);
+	sqlite3_bind_int64(stmt_insert, 5, fs->disk_free);
+	sqlite3_bind_int64(stmt_insert, 6, fs->disk_total);
+	sqlite3_bind_int(stmt_insert, 7, fs->block_size);
 	failed = sqlite3_step(stmt_insert);
 
 	if (failed != SQLITE_DONE) {

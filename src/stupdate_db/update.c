@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Thu, 18 Jul 2013 22:36:22 +0200                         *
+*  Last modified: Thu, 18 Jul 2013 23:39:13 +0200                         *
 \*************************************************************************/
 
 // asprintf, versionsort
@@ -75,7 +75,7 @@ int sl_db_update(struct sl_database_connection * db, int version __attribute__((
 	}
 	sl_log_write(sl_log_level_info, sl_log_type_core, "Start new transaction: OK");
 
-	int session_id = db->ops->start_session(db);
+	int session_id = db->ops->start_session(db, host_id);
 	if (session_id < 0) {
 		db->ops->cancel_transaction(db);
 		sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to create new session");
@@ -161,7 +161,7 @@ static int sl_db_update_file(struct sl_database_connection * db, int host_id, in
 
 	free(file);
 
-	return 0;
+	return failed;
 }
 
 static int sl_db_update_file_filter(const struct dirent * file) {
@@ -215,7 +215,7 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 	blkid_tag_iterate_end(iter);
 	free(device);
 
-	int s2fs = db->ops->sync_filesystem(db, host_id, session_id, fs);
+	int s2fs = db->ops->sync_filesystem(db, session_id, fs);
 	if (s2fs < 0) {
 		sl_filesystem_free(fs);
 		return s2fs;
