@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Fri, 19 Jul 2013 00:17:38 +0200                         *
+*  Last modified: Fri, 19 Jul 2013 23:04:03 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -53,6 +53,7 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 static int sl_database_sqlite_connection_create_table(sqlite3 * db, const char * table, const char * query);
 static int sl_database_sqlite_connection_get_database_version(struct sl_database_connection * connect);
 
+static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int nb_keep_sesion);
 static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id);
 static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname);
 static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect, int host_id);
@@ -71,11 +72,12 @@ static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 	.create_database      = sl_database_sqlite_connection_create_database,
 	.get_database_version = sl_database_sqlite_connection_get_database_version,
 
-	.end_session      = sl_database_sqlite_connection_end_session,
-	.get_host_by_name = sl_database_sqlite_connection_get_host_by_name,
-	.start_session    = sl_database_sqlite_connection_start_session,
-	.sync_file        = sl_database_sqlite_connection_sync_file,
-	.sync_filesystem  = sl_database_sqlite_connection_sync_filesystem,
+	.delete_old_session = sl_database_sqlite_connection_delete_old_session,
+	.end_session        = sl_database_sqlite_connection_end_session,
+	.get_host_by_name   = sl_database_sqlite_connection_get_host_by_name,
+	.start_session      = sl_database_sqlite_connection_start_session,
+	.sync_file          = sl_database_sqlite_connection_sync_file,
+	.sync_filesystem    = sl_database_sqlite_connection_sync_filesystem,
 };
 
 
@@ -286,6 +288,119 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 }
 
 
+static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int nb_keep_sesion) {
+	struct sl_database_sqlite_connection_private * self = connect->data;
+	if (self->db_handler == NULL)
+		return 1;
+
+	sqlite3_stmt * stmt_ctt;
+	static const char * query_ctt = "CREATE TEMP TABLE remove_session AS SELECT s1.id AS session FROM session s1 LEFT JOIN session s2 ON s1.id < s2.id AND s1.host = s2.host GROUP BY s1.id HAVING COUNT(s2.id) >= ?1";
+	int failed = sqlite3_prepare_v2(self->db_handler, query_ctt, -1, &stmt_ctt, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'create table remove_session'");
+		return -1;
+	}
+
+	sqlite3_bind_int(stmt_ctt, 1, nb_keep_sesion);
+	failed = sqlite3_step(stmt_ctt);
+	sqlite3_finalize(stmt_ctt);
+
+	if (failed != SQLITE_DONE) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while creating temporary table remove_session");
+		return -1;
+	}
+
+	sqlite3_stmt * stmt_ds;
+	static const char * query_ds = "DELETE FROM session WHERE id IN (SELECT session FROM remove_session)";
+	failed = sqlite3_prepare_v2(self->db_handler, query_ds, -1, &stmt_ds, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'delete from session'");
+		return -1;
+	}
+
+	failed = sqlite3_step(stmt_ds);
+	sqlite3_finalize(stmt_ds);
+
+	if (failed != SQLITE_DONE) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while delete from session");
+		return -1;
+	}
+
+	sqlite3_stmt * stmt_dtrs;
+	static const char * query_dtrs = "DROP TABLE remove_session";
+	failed = sqlite3_prepare_v2(self->db_handler, query_dtrs, -1, &stmt_dtrs, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'drop table remove_session'");
+		return -1;
+	}
+
+	failed = sqlite3_step(stmt_dtrs);
+	sqlite3_finalize(stmt_dtrs);
+
+	if (failed != SQLITE_DONE) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while dropping table remove_session");
+		return -1;
+	}
+
+	sqlite3_stmt * stmt_ds2fs;
+	static const char * query_ds2fs = "DELETE FROM session2filesystem WHERE session NOT IN (SELECT id FROM session)";
+	failed = sqlite3_prepare_v2(self->db_handler, query_ds2fs, -1, &stmt_ds2fs, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'delete from session2filesystem'");
+		return -1;
+	}
+
+	failed = sqlite3_step(stmt_ds2fs);
+	sqlite3_finalize(stmt_ds2fs);
+
+	if (failed != SQLITE_DONE) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while deleting from session2filesystem");
+		return -1;
+	}
+
+	sqlite3_stmt * stmt_df2s;
+	static const char * query_df2s = "DELETE FROM file2session WHERE s2fs NOT IN (SELECT id FROM session2filesystem)";
+	failed = sqlite3_prepare_v2(self->db_handler, query_df2s, -1, &stmt_df2s, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'delete from file2session'");
+		return -1;
+	}
+
+	failed = sqlite3_step(stmt_df2s);
+	sqlite3_finalize(stmt_df2s);
+
+	if (failed != SQLITE_DONE) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while deleting from file2session");
+		return -1;
+	}
+
+	sqlite3_stmt * stmt_df;
+	static const char * query_df = "DELETE FROM file WHERE id NOT IN (SELECT file FROM file2session)";
+	failed = sqlite3_prepare_v2(self->db_handler, query_df, -1, &stmt_df, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'delete from file'");
+		return -1;
+	}
+
+	failed = sqlite3_step(stmt_df);
+	sqlite3_finalize(stmt_df);
+
+	if (failed != SQLITE_DONE) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while deleting from file");
+		return -1;
+	}
+
+	char * error;
+	failed = sqlite3_exec(self->db_handler, "VACUUM", NULL, NULL, &error);
+
+	if (failed != SQLITE_OK) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to vaccum, error: %s", error);
+		sqlite3_free(error);
+	}
+
+	return failed != SQLITE_OK;
+}
+
 static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id) {
 	struct sl_database_sqlite_connection_private * self = connect->data;
 	if (self->db_handler == NULL)
@@ -301,6 +416,8 @@ static int sl_database_sqlite_connection_end_session(struct sl_database_connecti
 
 	sqlite3_bind_int(stmt_update, 1, session_id);
 	failed = sqlite3_step(stmt_update);
+
+	sqlite3_finalize(stmt_update);
 
 	return failed != SQLITE_DONE;
 }

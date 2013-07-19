@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Mon, 15 Jul 2013 22:28:48 +0200                         *
+*  Last modified: Fri, 19 Jul 2013 22:59:49 +0200                         *
 \*************************************************************************/
 
 // getopt_long
@@ -160,6 +160,16 @@ int main(int argc, char * argv[]) {
 			sl_log_write(sl_log_level_err, sl_log_type_core, "Updating finished with errors");
 		else
 			sl_log_write(sl_log_level_notice, sl_log_type_core, "Updating finished without errors");
+	}
+
+	if (failed == 0) {
+		sl_log_write(sl_log_level_notice, sl_log_type_core, "Start removing old session");
+		failed = connect->ops->delete_old_session(connect, 4);
+
+		if (failed)
+			sl_log_write(sl_log_level_err, sl_log_type_core, "Deleting old session finished with errors");
+		else
+			sl_log_write(sl_log_level_notice, sl_log_type_core, "Deleting old session finished without errors");
 	}
 
 	connect->ops->free(connect);
