@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 14:01:44 +0200                         *
+*  Last modified: Sat, 20 Jul 2013 16:42:54 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -53,7 +53,7 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 static int sl_database_sqlite_connection_exec(sqlite3 * db, const char * query);
 static int sl_database_sqlite_connection_get_database_version(struct sl_database_connection * connect);
 
-static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int nb_session_kept);
+static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int host_id, int nb_session_kept);
 static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id);
 static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname);
 static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect, int host_id);
@@ -290,20 +290,21 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 }
 
 
-static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int nb_session_kept) {
+static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int host_id, int nb_session_kept) {
 	struct sl_database_sqlite_connection_private * self = connect->data;
 	if (self->db_handler == NULL)
 		return 1;
 
 	sqlite3_stmt * stmt_ctt;
-	static const char * query_ctt = "CREATE TEMP TABLE remove_session AS SELECT s1.id AS session FROM session s1 LEFT JOIN session s2 ON s1.id < s2.id AND s1.host = s2.host GROUP BY s1.id HAVING COUNT(s2.id) >= ?1";
+	static const char * query_ctt = "CREATE TEMP TABLE remove_session AS SELECT s1.id AS session FROM session s1 LEFT JOIN session s2 ON s1.id < s2.id AND s1.host = s2.host WHERE s1.host = ?1 GROUP BY s1.id HAVING COUNT(s2.id) >= ?2";
 	int failed = sqlite3_prepare_v2(self->db_handler, query_ctt, -1, &stmt_ctt, NULL);
 	if (failed) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'create table remove_session'");
 		return -1;
 	}
 
-	sqlite3_bind_int(stmt_ctt, 1, nb_session_kept);
+	sqlite3_bind_int(stmt_ctt, 1, host_id);
+	sqlite3_bind_int(stmt_ctt, 2, nb_session_kept);
 	failed = sqlite3_step(stmt_ctt);
 	sqlite3_finalize(stmt_ctt);
 
