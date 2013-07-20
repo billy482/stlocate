@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Thu, 18 Jul 2013 23:39:13 +0200                         *
+*  Last modified: Sat, 20 Jul 2013 16:28:33 +0200                         *
 \*************************************************************************/
 
 // asprintf, versionsort
@@ -43,8 +43,6 @@
 #include <sys/statfs.h>
 // lstat
 #include <sys/types.h>
-// uname
-#include <sys/utsname.h>
 // lstat
 #include <unistd.h>
 
@@ -62,12 +60,7 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 static void sl_db_update_init(void) __attribute__((constructor));
 
 
-int sl_db_update(struct sl_database_connection * db, int version __attribute__((unused))) {
-	struct utsname name;
-	uname(&name);
-
-	int host_id = db->ops->get_host_by_name(db, name.nodename);
-
+int sl_db_update(struct sl_database_connection * db, int host_id, int version __attribute__((unused))) {
 	int failed = db->ops->start_transaction(db);
 	if (failed) {
 		sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to start new transaction");

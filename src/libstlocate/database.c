@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 13 Jul 2013 23:42:52 +0200                         *
+*  Last modified: Sat, 20 Jul 2013 16:17:18 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -63,9 +63,23 @@ void sl_database_conf(const struct sl_hashtable * params) {
 		return;
 	}
 
+	int nsk = 0;
+	struct sl_hashtable_value nb_session_kept = sl_hashtable_get(params, "nb_session_kept");
+	if (nb_session_kept.type == sl_hashtable_value_null) {
+		nsk = 7;
+		sl_log_write(sl_log_level_notice, sl_log_type_conf, "Database: no nb_session_kept found, using default value 7");
+	} else {
+		nsk = sl_hashtable_val_convert_to_signed_integer(&nb_session_kept);
+		if (nsk < 1) {
+			sl_log_write(sl_log_level_err, sl_log_type_conf, "Database: nb_session_kept should be a positive integer but not %d", nsk);
+			return;
+		}
+	}
+
 	struct sl_database * db = sl_database_get_driver(driver.value.string);
 	if (db != NULL) {
 		struct sl_database_config * conf = db->ops->add(params);
+		conf->nb_session_kept = nsk;
 
 		if (conf != NULL) {
 			pthread_mutex_lock(&sl_database_lock);

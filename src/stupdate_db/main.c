@@ -22,13 +22,15 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 10:30:44 +0200                         *
+*  Last modified: Sat, 20 Jul 2013 16:28:13 +0200                         *
 \*************************************************************************/
 
 // getopt_long
 #include <getopt.h>
 // printf, sscanf
 #include <stdio.h>
+// uname
+#include <sys/utsname.h>
 
 #include <stlocate/conf.h>
 #include <stlocate/database.h>
@@ -167,9 +169,14 @@ int main(int argc, char * argv[]) {
 		failed = 6;
 	}
 
+	static struct utsname name;
+	uname(&name);
+
+	int host_id = connect->ops->get_host_by_name(connect, name.nodename);
+
 	if (delete_session == 0 && failed == 0) {
 		sl_log_write(sl_log_level_notice, sl_log_type_core, "Start updating");
-		failed = sl_db_update(connect, current_db_version);
+		failed = sl_db_update(connect, host_id, current_db_version);
 
 		if (failed)
 			sl_log_write(sl_log_level_err, sl_log_type_core, "Updating finished with errors");
@@ -179,10 +186,10 @@ int main(int argc, char * argv[]) {
 
 	if (failed == 0) {
 		if (delete_session == 0)
-			delete_session = 7;
+			delete_session = db_config->nb_session_kept;
 
 		sl_log_write(sl_log_level_notice, sl_log_type_core, "Start removing old %d session", delete_session);
-		failed = connect->ops->delete_old_session(connect, delete_session);
+		failed = connect->ops->delete_old_session(connect, host_id, delete_session);
 
 		if (failed)
 			sl_log_write(sl_log_level_err, sl_log_type_core, "Deleting old session finished with errors");

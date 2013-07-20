@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Mon, 15 Jul 2013 21:47:53 +0200                         *
+*  Last modified: Sat, 20 Jul 2013 16:27:56 +0200                         *
 \*************************************************************************/
 
 #ifndef __STUPDATE_DB_COMMON_H__
@@ -30,7 +30,7 @@
 
 struct sl_database_connection;
 
-int sl_db_update(struct sl_database_connection * db, int version);
+int sl_db_update(struct sl_database_connection * db, int host_id, int version);
 
 #endif
 

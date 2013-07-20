@@ -53,7 +53,7 @@ static int sl_database_sqlite_connection_create_database(struct sl_database_conn
 static int sl_database_sqlite_connection_exec(sqlite3 * db, const char * query);
 static int sl_database_sqlite_connection_get_database_version(struct sl_database_connection * connect);
 
-static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int nb_keep_sesion);
+static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int nb_session_kept);
 static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id);
 static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname);
 static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect, int host_id);
@@ -290,7 +290,7 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 }
 
 
-static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int nb_keep_sesion) {
+static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int nb_session_kept) {
 	struct sl_database_sqlite_connection_private * self = connect->data;
 	if (self->db_handler == NULL)
 		return 1;
@@ -303,7 +303,7 @@ static int sl_database_sqlite_connection_delete_old_session(struct sl_database_c
 		return -1;
 	}
 
-	sqlite3_bind_int(stmt_ctt, 1, nb_keep_sesion);
+	sqlite3_bind_int(stmt_ctt, 1, nb_session_kept);
 	failed = sqlite3_step(stmt_ctt);
 	sqlite3_finalize(stmt_ctt);
 
