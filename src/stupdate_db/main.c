@@ -22,12 +22,12 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Fri, 19 Jul 2013 22:59:49 +0200                         *
+*  Last modified: Sat, 20 Jul 2013 10:30:44 +0200                         *
 \*************************************************************************/
 
 // getopt_long
 #include <getopt.h>
-// printf
+// printf, sscanf
 #include <stdio.h>
 
 #include <stlocate/conf.h>
@@ -50,19 +50,23 @@ int main(int argc, char * argv[]) {
 		OPT_HELP    = 'h',
 		OPT_VERBOSE = 'v',
 		OPT_VERSION = 'V',
+
+		OPT_DELETE_SESION = 100,
 	};
 
 	static int option_index = 0;
 	static struct option long_options[] = {
-		{ "config",  1, NULL, OPT_CONFIG },
-		{ "help",    0, NULL, OPT_HELP },
-		{ "verbose", 0, NULL, OPT_VERBOSE },
-		{ "version", 0, NULL, OPT_VERSION },
+		{ "config",         1, NULL, OPT_CONFIG },
+		{ "delete-session", 1, NULL, OPT_DELETE_SESION },
+		{ "help",           0, NULL, OPT_HELP },
+		{ "verbose",        0, NULL, OPT_VERBOSE },
+		{ "version",        0, NULL, OPT_VERSION },
 
 		{NULL, 0, NULL, 0},
 	};
 
 	static const char * config = CONFIG_FILE;
+	int delete_session = 0;
 	short verbose = 0;
 
 	// parse option
@@ -77,6 +81,17 @@ int main(int argc, char * argv[]) {
 			case OPT_CONFIG:
 				config = optarg;
 				sl_log_write(sl_log_level_notice, sl_log_type_core, "Using configuration file: '%s'", optarg);
+				break;
+
+			case OPT_DELETE_SESION:
+				if (sscanf(optarg, "%d", &delete_session) == 0) {
+					sl_log_write(sl_log_level_crit, sl_log_type_core, "parameter: --delete-session require an integer as option instead of %s", optarg);
+					return 1;
+				}
+				if (delete_session <= 0) {
+					sl_log_write(sl_log_level_crit, sl_log_type_core, "parameter: --delete-session require a positive integer as option instead of %d", delete_session);
+					return 1;
+				}
 				break;
 
 			case OPT_HELP:
@@ -152,7 +167,7 @@ int main(int argc, char * argv[]) {
 		failed = 6;
 	}
 
-	if (failed == 0) {
+	if (delete_session == 0 && failed == 0) {
 		sl_log_write(sl_log_level_notice, sl_log_type_core, "Start updating");
 		failed = sl_db_update(connect, current_db_version);
 
@@ -163,8 +178,11 @@ int main(int argc, char * argv[]) {
 	}
 
 	if (failed == 0) {
-		sl_log_write(sl_log_level_notice, sl_log_type_core, "Start removing old session");
-		failed = connect->ops->delete_old_session(connect, 4);
+		if (delete_session == 0)
+			delete_session = 7;
+
+		sl_log_write(sl_log_level_notice, sl_log_type_core, "Start removing old %d session", delete_session);
+		failed = connect->ops->delete_old_session(connect, delete_session);
 
 		if (failed)
 			sl_log_write(sl_log_level_err, sl_log_type_core, "Deleting old session finished with errors");
@@ -185,8 +203,9 @@ static void sl_show_help() {
 	sl_log_disable_display_log();
 
 	printf("StUpdate_db, version: " STLOCATE_VERSION ", build: " __DATE__ " " __TIME__ "\n");
-	printf("    --config,   -c : Read this config file instead of \"" CONFIG_FILE "\"\n");
-	printf("    --help,     -h : Show this and exit\n");
-	printf("    --version,  -V : Show the version of STone then exit\n");
+	printf("    --config,                  -c : Read this config file instead of \"" CONFIG_FILE "\"\n");
+	printf("    --delete-session <nb_session> : Remove nb_session from database\n");
+	printf("    --help,                    -h : Show this and exit\n");
+	printf("    --version,                 -V : Show the version of STone then exit\n");
 }
 
