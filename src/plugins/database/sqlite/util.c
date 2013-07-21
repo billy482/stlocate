@@ -22,22 +22,19 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 21 Jul 2013 13:51:09 +0200                         *
+*  Last modified: Sun, 21 Jul 2013 14:02:13 +0200                         *
 \*************************************************************************/
 
-#ifndef __STLOCATE_DB_SQLITE_H__
-#define __STLOCATE_DB_SQLITE_H__
+#define _GNU_SOURCE
+// mktime, strptime
+#include <time.h>
 
-#include <sys/types.h>
+#include "common.h"
 
-#include <stlocate/database.h>
+int sl_database_sqlite_util_convert_to_time(const char * time) {
+	struct tm t;
+	strptime(time, "%F %T", &t);
 
-struct sl_hashtable;
-
-struct sl_database_config * sl_database_sqlite_config_add(struct sl_database * driver, const struct sl_hashtable * params);
-struct sl_database_connection * sl_database_sqlite_connection_add(struct sl_database_config * config, const char * path);
-
-int sl_database_sqlite_util_convert_to_time(const char * time);
-
-#endif
+	return mktime(&t);
+}
 

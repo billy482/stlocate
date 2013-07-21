@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 23:11:18 +0200                         *
+*  Last modified: Sun, 21 Jul 2013 13:57:58 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -634,8 +634,8 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 			result->nb_files++;
 
 			file->session_id = sqlite3_column_int(stmt_select, 0);
-			file->session_start = sqlite3_column_int(stmt_select, 1);
-			file->session_end = sqlite3_column_int(stmt_select, 2);
+			file->session_start = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 1));
+			file->session_end = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 2));
 
 			file->dev_no = sqlite3_column_int(stmt_select, 3);
 			file->mount_point = strdup((const char *) sqlite3_column_text(stmt_select, 4));
@@ -646,8 +646,8 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 			file->uid = sqlite3_column_int(stmt_select, 8);
 			file->gid = sqlite3_column_int(stmt_select, 9);
 			file->size = sqlite3_column_int64(stmt_select, 10);
-			file->atime = sqlite3_column_int(stmt_select, 11);
-			file->mtime = sqlite3_column_int(stmt_select, 12);
+			file->atime = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 11));
+			file->mtime = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 12));
 
 			failed = sqlite3_step(stmt_select);
 		} while (failed == SQLITE_ROW);
