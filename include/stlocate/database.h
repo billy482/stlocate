@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 16:11:18 +0200                         *
+*  Last modified: Sat, 20 Jul 2013 21:17:42 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_DATABASE_H__
@@ -37,6 +37,8 @@ struct stat;
 #include <sys/types.h>
 
 struct sl_filesystem;
+struct sl_request;
+struct sl_result_files;
 
 /**
  * \struct sl_database_connection
@@ -118,10 +120,13 @@ struct sl_database_connection {
 
 		int (*delete_old_session)(struct sl_database_connection * connect, int host_id, int nb_session_kept);
 		int (*end_session)(struct sl_database_connection * connect, int session_id);
-		int (*get_host_by_name)(struct sl_database_connection * connect, const char * hostname);
 		int (*start_session)(struct sl_database_connection * connect, int host_id);
+
+		int (*get_host_by_name)(struct sl_database_connection * connect, const char * hostname);
 		int (*sync_file)(struct sl_database_connection * connect, int s2fs, const char * filename, struct stat * st);
 		int (*sync_filesystem)(struct sl_database_connection * connect, int session_id, struct sl_filesystem * fs);
+
+		struct sl_result_files * (*find_file)(struct sl_database_connection * connect, int host_id, struct sl_request * request);
 	} * ops;
 
 	/**

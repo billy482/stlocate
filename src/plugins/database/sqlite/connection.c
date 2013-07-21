@@ -22,18 +22,21 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 16:42:54 +0200                         *
+*  Last modified: Sat, 20 Jul 2013 23:11:18 +0200                         *
 \*************************************************************************/
 
 // free, malloc
 #include <stdlib.h>
 // sqlite3_open
 #include <sqlite3.h>
+// strdup
+#include <string.h>
 // struct stat
 #include <sys/stat.h>
 
 #include <stlocate/filesystem.h>
 #include <stlocate/log.h>
+#include <stlocate/result.h>
 
 #include "common.h"
 
@@ -55,10 +58,13 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 
 static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int host_id, int nb_session_kept);
 static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id);
-static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname);
 static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect, int host_id);
+
+static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname);
 static int sl_database_sqlite_connection_sync_file(struct sl_database_connection * connect, int s2fs, const char * filename, struct stat * st);
 static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, int session_id, struct sl_filesystem * fs);
+
+static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_database_connection * connect, int host_id, struct sl_request * request);
 
 static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 	.close                = sl_database_sqlite_connection_close,
@@ -74,10 +80,13 @@ static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 
 	.delete_old_session = sl_database_sqlite_connection_delete_old_session,
 	.end_session        = sl_database_sqlite_connection_end_session,
-	.get_host_by_name   = sl_database_sqlite_connection_get_host_by_name,
 	.start_session      = sl_database_sqlite_connection_start_session,
-	.sync_file          = sl_database_sqlite_connection_sync_file,
-	.sync_filesystem    = sl_database_sqlite_connection_sync_filesystem,
+
+	.get_host_by_name = sl_database_sqlite_connection_get_host_by_name,
+	.sync_file        = sl_database_sqlite_connection_sync_file,
+	.sync_filesystem  = sl_database_sqlite_connection_sync_filesystem,
+
+	.find_file = sl_database_sqlite_connection_find,
 };
 
 
@@ -364,6 +373,29 @@ static int sl_database_sqlite_connection_end_session(struct sl_database_connecti
 	return failed != SQLITE_DONE;
 }
 
+static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect, int host_id) {
+	struct sl_database_sqlite_connection_private * self = connect->data;
+	if (self->db_handler == NULL)
+		return 1;
+
+	sqlite3_stmt * stmt_insert;
+	static const char * query = "INSERT INTO session(start_time, host) VALUES (datetime('now'), ?1)";
+	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_insert, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into session'");
+		return -1;
+	}
+
+	sqlite3_bind_int(stmt_insert, 1, host_id);
+	failed = sqlite3_step(stmt_insert);
+
+	int session_id = sqlite3_last_insert_rowid(self->db_handler);
+	sqlite3_finalize(stmt_insert);
+
+	return session_id;
+}
+
+
 static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_connection * connect, const char * hostname) {
 	struct sl_database_sqlite_connection_private * self = connect->data;
 	if (self->db_handler == NULL)
@@ -407,28 +439,6 @@ static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_con
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to get an host id");
 		return -3;
 	}
-}
-
-static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect, int host_id) {
-	struct sl_database_sqlite_connection_private * self = connect->data;
-	if (self->db_handler == NULL)
-		return 1;
-
-	sqlite3_stmt * stmt_insert;
-	static const char * query = "INSERT INTO session(start_time, host) VALUES (datetime('now'), ?1)";
-	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_insert, NULL);
-	if (failed) {
-		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into session'");
-		return -1;
-	}
-
-	sqlite3_bind_int(stmt_insert, 1, host_id);
-	failed = sqlite3_step(stmt_insert);
-
-	int session_id = sqlite3_last_insert_rowid(self->db_handler);
-	sqlite3_finalize(stmt_insert);
-
-	return session_id;
 }
 
 static int sl_database_sqlite_connection_sync_file(struct sl_database_connection * connect, int s2fs, const char * filename, struct stat * st) {
@@ -535,5 +545,116 @@ static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_conn
 	int s2f_id = sqlite3_last_insert_rowid(self->db_handler);
 	sqlite3_finalize(stmt_insert);
 	return s2f_id;
+}
+
+
+static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_database_connection * connect, int host_id, struct sl_request * request) {
+	struct sl_database_sqlite_connection_private * self = connect->data;
+	if (self->db_handler == NULL)
+		return NULL;
+
+	sqlite3_stmt * stmt_select;
+	char * query = sqlite3_mprintf("SELECT s.id, s.start_time, s.end_time, s2f.dev_no, s2f.mount_point, f.inode, f.path, f.mode, f.uid, f.gid, f.size, f.access_time, f.modif_time FROM session s LEFT JOIN session2filesystem s2f ON s.id = s2f.session LEFT JOIN file f ON s2f.id = f.s2fs WHERE s.host = ?1");
+	int i_param = 2;
+	if (request->session_min_id < request->session_max_id) {
+		char * tmp = query;
+		query = sqlite3_mprintf("%s AND s.id BETWEEN ?%s AND ?%d", query, i_param, i_param + 1);
+		sqlite3_free(tmp);
+		i_param += 2;
+	} else if (request->session_min_id > 0) {
+		char * tmp = query;
+		query = sqlite3_mprintf("%s AND s.id = ?%d", query, i_param);
+		sqlite3_free(tmp);
+		i_param++;
+	}
+
+	if (request->dev_no != (dev_t) -1) {
+		char * tmp = query;
+		query = sqlite3_mprintf("%s AND s2f.dev_no = ?%d", query, i_param);
+		sqlite3_free(tmp);
+		i_param++;
+	}
+
+	if (request->inode != (ino_t) -1) {
+		char * tmp = query;
+		query = sqlite3_mprintf("%s AND f.inode = ?%d", query, i_param);
+		sqlite3_free(tmp);
+		i_param++;
+	}
+
+	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_select, NULL);
+	sqlite3_free(query);
+
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'get file'");
+		return NULL;
+	}
+
+	sqlite3_bind_int(stmt_select, 1, host_id);
+	i_param = 2;
+	if (request->session_min_id < request->session_max_id) {
+		sqlite3_bind_int(stmt_select, i_param, request->session_min_id);
+		sqlite3_bind_int(stmt_select, i_param + 1, request->session_max_id);
+		i_param += 2;
+	} else if (request->session_min_id > 0) {
+		sqlite3_bind_int(stmt_select, i_param, request->session_min_id);
+		i_param++;
+	}
+
+	if (request->dev_no != (dev_t) -1) {
+		sqlite3_bind_int(stmt_select, i_param, request->dev_no);
+		i_param++;
+	}
+
+	if (request->inode != (ino_t) -1) {
+		sqlite3_bind_int(stmt_select, i_param, request->inode);
+		i_param++;
+	}
+
+	failed = sqlite3_step(stmt_select);
+
+	struct sl_result_files * result = NULL;
+
+	if (failed == SQLITE_ROW) {
+		result = malloc(sizeof(struct sl_result_files));
+		result->files = NULL;
+		result->nb_files = 0;
+
+		do {
+			void * new_addr = realloc(result->files, (result->nb_files + 1) * sizeof(struct sl_result_file));
+			if (new_addr == NULL) {
+				sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: not enough memory to get result");
+				sqlite3_finalize(stmt_select);
+				sl_result_files_free(result);
+				return NULL;
+			}
+
+			result->files = new_addr;
+			struct sl_result_file * file = result->files + result->nb_files;
+			result->nb_files++;
+
+			file->session_id = sqlite3_column_int(stmt_select, 0);
+			file->session_start = sqlite3_column_int(stmt_select, 1);
+			file->session_end = sqlite3_column_int(stmt_select, 2);
+
+			file->dev_no = sqlite3_column_int(stmt_select, 3);
+			file->mount_point = strdup((const char *) sqlite3_column_text(stmt_select, 4));
+
+			file->inode = sqlite3_column_int64(stmt_select, 5);
+			file->path = strdup((const char *) sqlite3_column_text(stmt_select, 6));
+			file->mode = sqlite3_column_int(stmt_select, 7);
+			file->uid = sqlite3_column_int(stmt_select, 8);
+			file->gid = sqlite3_column_int(stmt_select, 9);
+			file->size = sqlite3_column_int64(stmt_select, 10);
+			file->atime = sqlite3_column_int(stmt_select, 11);
+			file->mtime = sqlite3_column_int(stmt_select, 12);
+
+			failed = sqlite3_step(stmt_select);
+		} while (failed == SQLITE_ROW);
+	}
+
+	sqlite3_finalize(stmt_select);
+
+	return result;
 }
 
