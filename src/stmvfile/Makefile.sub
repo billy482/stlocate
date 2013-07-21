@@ -1,0 +1,11 @@
+STMVFILE_SRC_DIR			:= src/stmvfile
+
+STMVFILE_BIN				:= bin/stmvfile
+STMVFILE_CFLAG				:= -pthread
+STMVFILE_LD					:= -pthread -Llib -lstlocate
+
+STMVFILE_DEPEND_LIB			:= lib/libstlocate.so
+
+STMVFILE_CHCKSUM_FILE		:= stmvfile.chcksum
+
+BIN_SYMS					+= STMVFILE
