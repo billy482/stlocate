@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 16:28:33 +0200                         *
+*  Last modified: Mon, 29 Jul 2013 23:15:18 +0200                         *
 \*************************************************************************/
 
 // asprintf, versionsort
@@ -43,6 +43,8 @@
 #include <sys/statfs.h>
 // lstat
 #include <sys/types.h>
+// time
+#include <time.h>
 // lstat
 #include <unistd.h>
 
@@ -104,11 +106,19 @@ int sl_db_update(struct sl_database_connection * db, int host_id, int version __
 }
 
 static int sl_db_update_file(struct sl_database_connection * db, int host_id, int session_id, int s2fs, const char * root, const char * path, struct stat * sfile) {
+	static time_t last = 0;
+	time_t now = time(NULL);
+
 	char * file;
 	if (path != NULL)
 		asprintf(&file, "%s/%s", !strcmp("/", root) ? "" : root, path);
 	else
 		file = strdup(root);
+
+	if (now > last) {
+		sl_log_write(sl_log_level_notice, sl_log_type_core, "Current file: %s", file);
+		last = now;
+	}
 
 	int failed = db->ops->sync_file(db, s2fs, path != NULL ? path : "/", sfile);
 	if (failed) {
