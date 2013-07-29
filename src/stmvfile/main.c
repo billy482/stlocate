@@ -151,7 +151,8 @@ int main(int argc, char * argv[]) {
 
 			unsigned int i;
 			for (i = 0; i < result->nb_files; i++) {
-				printf("%u: %s/%s\n", i, result->files[i].mount_point, result->files[i].path);
+				struct sl_result_file * f = result->files + i;
+				printf("%u: %s/%s s:%zd\n", i, f->mount_point, f->path, f->size);
 			}
 
 			sl_result_files_free(result);

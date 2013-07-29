@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 14 Jul 2013 16:27:19 +0200                         *
+*  Last modified: Sun, 28 Jul 2013 10:09:56 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -53,6 +53,7 @@ static void sl_log_init(void) __attribute__((constructor));
 static void sl_log_sent_message(void * arg);
 
 static bool sl_log_display_at_exit = true;
+static enum sl_log_level st_log_display = sl_log_level_alert;
 static volatile bool sl_log_logger_running = false;
 static bool sl_log_finished = false;
 
@@ -71,19 +72,20 @@ static pthread_mutex_t sl_log_lock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
 static pthread_cond_t sl_log_wait = PTHREAD_COND_INITIALIZER;
 
 static struct sl_log_level2 {
+	uint64_t hash;
 	enum sl_log_level level;
 	const char * name;
 } sl_log_levels[] = {
-	{ sl_log_level_alert,   "Alert" },
-	{ sl_log_level_crit,    "Critical" },
-	{ sl_log_level_debug,   "Debug" },
-	{ sl_log_level_emerg,   "Emergency" },
-	{ sl_log_level_err,     "Error" },
-	{ sl_log_level_info,    "Info" },
-	{ sl_log_level_notice,  "Notice" },
-	{ sl_log_level_warn,    "Warning" },
+	{ 0, sl_log_level_alert,   "Alert" },
+	{ 0, sl_log_level_crit,    "Critical" },
+	{ 0, sl_log_level_debug,   "Debug" },
+	{ 0, sl_log_level_emerg,   "Emergency" },
+	{ 0, sl_log_level_err,     "Error" },
+	{ 0, sl_log_level_info,    "Info" },
+	{ 0, sl_log_level_notice,  "Notice" },
+	{ 0, sl_log_level_warn,    "Warning" },
 
-	{ sl_log_level_unknown, "Unknown level" },
+	{ 0, sl_log_level_unknown, "Unknown level" },
 };
 
 static struct sl_log_type2 {
@@ -207,6 +209,10 @@ struct sl_log_driver * sl_log_get_driver(const char * driver) {
 
 void sl_log_init() {
 	sl_log_drivers = sl_hashtable_new(sl_string_compute_hash);
+
+	unsigned int i;
+	for (i = 0; sl_log_levels[i].level != sl_log_level_unknown; i++)
+		sl_log_levels[i].hash = sl_string_compute_hash(sl_log_levels[i].name);
 }
 
 const char * sl_log_level_to_string(enum sl_log_level level) {
@@ -304,9 +310,10 @@ enum sl_log_level sl_log_string_to_level(const char * level) {
 	if (level == NULL)
 		return sl_log_level_unknown;
 
+	uint64_t hash = sl_string_compute_hash(level);
 	unsigned int i;
 	for (i = 0; sl_log_levels[i].level != sl_log_level_unknown; i++)
-		if (!strcasecmp(sl_log_levels[i].name, level))
+		if (sl_log_levels[i].hash == hash)
 			return sl_log_levels[i].level;
 
 	return sl_log_levels[i].level;

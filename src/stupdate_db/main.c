@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 16:28:13 +0200                         *
+*  Last modified: Mon, 29 Jul 2013 22:42:16 +0200                         *
 \*************************************************************************/
 
 // getopt_long
@@ -120,9 +120,9 @@ int main(int argc, char * argv[]) {
 		}
 	} while (opt > -1);
 
+	sl_log_set_verbose(verbose);
+
 	sl_log_write(sl_log_level_info, sl_log_type_core, "Parsing option: ok");
-	if (verbose > 1)
-		printf("Parsing option ok\n");
 
 	// read configuration
 	if (sl_conf_read_config(config)) {

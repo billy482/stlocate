@@ -22,15 +22,71 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Mon, 29 Jul 2013 22:42:26 +0200                         *
+*  Last modified: Mon, 29 Jul 2013 22:35:56 +0200                         *
 \*************************************************************************/
 
-#ifndef __STUPDATE_DB_COMMON_H__
-#define __STUPDATE_DB_COMMON_H__
+// bool
+#include <stdbool.h>
+// printf
+#include <stdio.h>
+// gettimeofday
+#include <sys/time.h>
+// localtime_r, strftime
+#include <time.h>
 
-struct sl_database_connection;
+#include <stlocate/log.h>
 
-int sl_db_update(struct sl_database_connection * db, int host_id, int version);
+#include "log.h"
 
-#endif
+static void sl_log_verbose_free(struct sl_log_handler * handler);
+static void sl_log_verbose_write(struct sl_log_handler * handler, const struct sl_log_message * message);
+
+static struct sl_log_handler_ops sl_log_verbose_ops = {
+	.free  = sl_log_verbose_free,
+	.write = sl_log_verbose_write,
+};
+
+static struct sl_log_handler sl_verbose_log = {
+	.level = sl_log_level_err,
+	.ops   = &sl_log_verbose_ops,
+	.data  = NULL,
+};
+
+
+void sl_log_set_verbose(short verbose) {
+	switch (verbose) {
+		case 0:
+			break;
+
+		case 1:
+			sl_verbose_log.level = sl_log_level_warn;
+			break;
+
+		case 2:
+			sl_verbose_log.level = sl_log_level_info;
+			break;
+
+		default:
+			sl_verbose_log.level = sl_log_level_debug;
+			break;
+	}
+
+	static bool handler_added = false;
+	if (!handler_added) {
+		sl_log_add_handler(&sl_verbose_log);
+		handler_added = true;
+	}
+}
+
+static void sl_log_verbose_free(struct sl_log_handler * handler __attribute__((unused))) {}
+
+static void sl_log_verbose_write(struct sl_log_handler * handler __attribute__((unused)), const struct sl_log_message * message) {
+	struct tm curTime2;
+	char strtime[32];
+
+	localtime_r(&message->timestamp, &curTime2);
+	strftime(strtime, 32, "%F %T", &curTime2);
+
+	printf("[L:%-*s | T:%-*s | @%s]: %s\n", 9, sl_log_level_to_string(message->level), 15, sl_log_type_to_string(message->type), strtime, message->message);
+}
 

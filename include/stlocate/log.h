@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 14 Jul 2013 16:25:35 +0200                         *
+*  Last modified: Mon, 29 Jul 2013 22:39:07 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_LOG_H__
@@ -217,7 +217,7 @@ struct sl_log_handler {
 	 * \brief Private data of a log module
 	 */
 	void * data;
-} * modules;
+};
 
 /**
  * \def STLOCATE_LOG_API_LEVEL
@@ -278,6 +278,8 @@ const char * sl_log_level_to_string(enum sl_log_level level);
  * \note This function is thread-safe
  */
 void sl_log_start_logger(void);
+
+void sl_log_set_verbose(short verbose);
 
 void sl_log_stop_logger();
 

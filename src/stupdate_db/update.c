@@ -186,6 +186,7 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 
 	sl_log_write(sl_log_level_notice, sl_log_type_core, "Update filesystem: { path: %s }", path);
 
+	// dev can be null
 	blkid_dev dev = blkid_get_dev(cache, device, 0);
 
 	const char * uuid = NULL;
