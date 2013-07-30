@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 30 Jul 2013 21:57:20 +0200                         *
+*  Last modified: Tue, 30 Jul 2013 23:37:01 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -79,9 +79,10 @@ void sl_database_conf(const struct sl_hashtable * params) {
 	struct sl_database * db = sl_database_get_driver(driver.value.string);
 	if (db != NULL) {
 		struct sl_database_config * conf = db->ops->add(params);
-		conf->nb_session_kept = nsk;
 
 		if (conf != NULL) {
+			conf->nb_session_kept = nsk;
+
 			pthread_mutex_lock(&sl_database_lock);
 
 			if (sl_database_default_driver == NULL)
