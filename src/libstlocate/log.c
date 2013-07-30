@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 28 Jul 2013 10:09:56 +0200                         *
+*  Last modified: Tue, 30 Jul 2013 21:56:08 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -53,7 +53,6 @@ static void sl_log_init(void) __attribute__((constructor));
 static void sl_log_sent_message(void * arg);
 
 static bool sl_log_display_at_exit = true;
-static enum sl_log_level st_log_display = sl_log_level_alert;
 static volatile bool sl_log_logger_running = false;
 static bool sl_log_finished = false;
 
@@ -152,8 +151,11 @@ static void sl_log_exit(void) {
 			printf("%c: %s\n", sl_log_level_to_string(mes->data.level)[0], mes->data.message);
 	}
 
-	sl_hashtable_free(sl_log_drivers);
-	sl_log_drivers = NULL;
+	/**
+	 * sometimes, program crash here
+	 */
+	// sl_hashtable_free(sl_log_drivers);
+	// sl_log_drivers = NULL;
 
 	struct sl_log_message_unsent * message = sl_log_message_first;
 	sl_log_message_first = sl_log_message_last = NULL;

@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 14 Jul 2013 23:23:05 +0200                         *
+*  Last modified: Tue, 30 Jul 2013 21:58:32 +0200                         *
 \*************************************************************************/
 
 // open
@@ -56,8 +56,11 @@ static struct sl_hashtable * sl_conf_callback = NULL;
 
 
 static void sl_conf_exit() {
-	sl_hashtable_free(sl_conf_callback);
-	sl_conf_callback = NULL;
+	/**
+	 * sometimes, program crash here
+	 */
+	//sl_hashtable_free(sl_conf_callback);
+	//sl_conf_callback = NULL;
 }
 
 static void sl_conf_free_key(void * key, void * value __attribute__((unused))) {
@@ -116,8 +119,11 @@ int sl_conf_read_config(const char * conf_file) {
 				if (*ptr == '\n') {
 					if (*section) {
 						sl_conf_callback_f f = sl_hashtable_get(sl_conf_callback, section).value.custom;
-						if (f != NULL)
+						if (f != NULL) {
+							sl_log_write(sl_log_level_info, sl_log_type_conf, "Section '%s' is managed by %p", section, f);
 							f(params);
+						} else
+							sl_log_write(sl_log_level_warn, sl_log_type_conf, "Section '%s' has no handler, section ignored", section);
 					}
 
 					*section = 0;

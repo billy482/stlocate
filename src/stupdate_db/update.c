@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Mon, 29 Jul 2013 23:15:18 +0200                         *
+*  Last modified: Tue, 30 Jul 2013 21:33:29 +0200                         *
 \*************************************************************************/
 
 // asprintf, versionsort
@@ -116,7 +116,7 @@ static int sl_db_update_file(struct sl_database_connection * db, int host_id, in
 		file = strdup(root);
 
 	if (now > last) {
-		sl_log_write(sl_log_level_notice, sl_log_type_core, "Current file: %s", file);
+		sl_log_write(sl_log_level_debug, sl_log_type_core, "Current file: %s", file);
 		last = now;
 	}
 

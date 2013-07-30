@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 16:17:18 +0200                         *
+*  Last modified: Tue, 30 Jul 2013 21:57:20 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -94,8 +94,11 @@ void sl_database_conf(const struct sl_hashtable * params) {
 }
 
 static void sl_database_exit() {
-	sl_hashtable_free(sl_database_configs);
-	sl_hashtable_free(sl_database_drivers);
+	/**
+	 * sometimes, program crash here
+	 */
+	// sl_hashtable_free(sl_database_configs);
+	// sl_hashtable_free(sl_database_drivers);
 }
 
 static void sl_database_conf_free(void * key __attribute__((unused)), void * value) {

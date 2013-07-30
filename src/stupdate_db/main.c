@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Mon, 29 Jul 2013 22:42:16 +0200                         *
+*  Last modified: Mon, 29 Jul 2013 23:33:29 +0200                         *
 \*************************************************************************/
 
 // getopt_long
@@ -103,7 +103,7 @@ int main(int argc, char * argv[]) {
 				return 0;
 
 			case OPT_VERBOSE:
-				if (verbose < 2)
+				if (verbose < 3)
 					verbose++;
 				break;
 
