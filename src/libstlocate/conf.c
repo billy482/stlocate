@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 30 Jul 2013 21:58:32 +0200                         *
+*  Last modified: Tue, 30 Jul 2013 22:21:19 +0200                         *
 \*************************************************************************/
 
 // open
@@ -48,20 +48,20 @@
 #include "database.h"
 #include "log.h"
 
-static void sl_conf_exit(void) __attribute__((destructor));
+// static void sl_conf_exit(void) __attribute__((destructor));
 static void sl_conf_free_key(void * key, void * value);
 static void sl_conf_init(void) __attribute__((constructor));
 
 static struct sl_hashtable * sl_conf_callback = NULL;
 
 
-static void sl_conf_exit() {
-	/**
-	 * sometimes, program crash here
-	 */
+/*static void sl_conf_exit() {
+    //
+	// sometimes, program crash here
+    //
 	//sl_hashtable_free(sl_conf_callback);
 	//sl_conf_callback = NULL;
-}
+}*/
 
 static void sl_conf_free_key(void * key, void * value __attribute__((unused))) {
 	free(key);

@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Mon, 29 Jul 2013 23:33:29 +0200                         *
+*  Last modified: Tue, 30 Jul 2013 22:52:38 +0200                         *
 \*************************************************************************/
 
 // getopt_long
@@ -53,22 +53,22 @@ int main(int argc, char * argv[]) {
 		OPT_VERBOSE = 'v',
 		OPT_VERSION = 'V',
 
-		OPT_DELETE_SESION = 100,
+		OPT_KEEP_SESSION = 100,
 	};
 
 	static int option_index = 0;
 	static struct option long_options[] = {
-		{ "config",         1, NULL, OPT_CONFIG },
-		{ "delete-session", 1, NULL, OPT_DELETE_SESION },
-		{ "help",           0, NULL, OPT_HELP },
-		{ "verbose",        0, NULL, OPT_VERBOSE },
-		{ "version",        0, NULL, OPT_VERSION },
+		{ "config",       1, NULL, OPT_CONFIG },
+		{ "keep-session", 1, NULL, OPT_KEEP_SESSION },
+		{ "help",         0, NULL, OPT_HELP },
+		{ "verbose",      0, NULL, OPT_VERBOSE },
+		{ "version",      0, NULL, OPT_VERSION },
 
 		{NULL, 0, NULL, 0},
 	};
 
 	static const char * config = CONFIG_FILE;
-	int delete_session = 0;
+	int keep_session = 0;
 	short verbose = 0;
 
 	// parse option
@@ -85,13 +85,13 @@ int main(int argc, char * argv[]) {
 				sl_log_write(sl_log_level_notice, sl_log_type_core, "Using configuration file: '%s'", optarg);
 				break;
 
-			case OPT_DELETE_SESION:
-				if (sscanf(optarg, "%d", &delete_session) == 0) {
-					sl_log_write(sl_log_level_crit, sl_log_type_core, "parameter: --delete-session require an integer as option instead of %s", optarg);
+			case OPT_KEEP_SESSION:
+				if (sscanf(optarg, "%d", &keep_session) == 0) {
+					sl_log_write(sl_log_level_crit, sl_log_type_core, "parameter: --keep-session require an integer as option instead of %s", optarg);
 					return 1;
 				}
-				if (delete_session <= 0) {
-					sl_log_write(sl_log_level_crit, sl_log_type_core, "parameter: --delete-session require a positive integer as option instead of %d", delete_session);
+				if (keep_session <= 0) {
+					sl_log_write(sl_log_level_crit, sl_log_type_core, "parameter: --keep-session require a positive integer as option instead of %d", keep_session);
 					return 1;
 				}
 				break;
@@ -174,7 +174,7 @@ int main(int argc, char * argv[]) {
 
 	int host_id = connect->ops->get_host_by_name(connect, name.nodename);
 
-	if (delete_session == 0 && failed == 0) {
+	if (keep_session == 0 && failed == 0) {
 		sl_log_write(sl_log_level_notice, sl_log_type_core, "Start updating");
 		failed = sl_db_update(connect, host_id, current_db_version);
 
@@ -185,11 +185,11 @@ int main(int argc, char * argv[]) {
 	}
 
 	if (failed == 0) {
-		if (delete_session == 0)
-			delete_session = db_config->nb_session_kept;
+		if (keep_session == 0)
+			keep_session = db_config->nb_session_kept;
 
-		sl_log_write(sl_log_level_notice, sl_log_type_core, "Start removing old %d session", delete_session);
-		failed = connect->ops->delete_old_session(connect, host_id, delete_session);
+		sl_log_write(sl_log_level_notice, sl_log_type_core, "Start removing old %d session", keep_session);
+		failed = connect->ops->delete_old_session(connect, host_id, keep_session);
 
 		if (failed)
 			sl_log_write(sl_log_level_err, sl_log_type_core, "Deleting old session finished with errors");
@@ -210,9 +210,9 @@ static void sl_show_help() {
 	sl_log_disable_display_log();
 
 	printf("StUpdate_db, version: " STLOCATE_VERSION ", build: " __DATE__ " " __TIME__ "\n");
-	printf("    --config,                  -c : Read this config file instead of \"" CONFIG_FILE "\"\n");
-	printf("    --delete-session <nb_session> : Remove nb_session from database\n");
-	printf("    --help,                    -h : Show this and exit\n");
-	printf("    --version,                 -V : Show the version of STone then exit\n");
+	printf("    --config,                -c : Read this config file instead of \"" CONFIG_FILE "\"\n");
+	printf("    --keep-session <nb_session> : Keep at least nb_session from database\n");
+	printf("    --help,                  -h : Show this and exit\n");
+	printf("    --version,               -V : Show the version of STone then exit\n");
 }
 
