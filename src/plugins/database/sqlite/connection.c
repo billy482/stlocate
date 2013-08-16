@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 21 Jul 2013 13:57:58 +0200                         *
+*  Last modified: Sat, 10 Aug 2013 17:54:43 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -581,6 +581,10 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 		sqlite3_free(tmp);
 		i_param++;
 	}
+
+	char * tmp = query;
+	query = sqlite3_mprintf("%s ORDER BY s.id DESC", query);
+	sqlite3_free(tmp);
 
 	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_select, NULL);
 	sqlite3_free(query);

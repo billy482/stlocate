@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 21 Jul 2013 12:16:21 +0200                         *
+*  Last modified: Sat, 10 Aug 2013 17:53:04 +0200                         *
 \*************************************************************************/
 
 // getopt_long
@@ -50,27 +50,32 @@
 static void sl_show_help(void);
 
 int main(int argc, char * argv[]) {
+	sl_log_write(sl_log_level_notice, sl_log_type_core, "Starting StMvFile, version: " STLOCATE_VERSION ", build: " __DATE__ " " __TIME__);
+
 	enum {
 		OPT_CONFIG  = 'c',
 		OPT_HELP    = 'h',
+		OPT_VERBOSE = 'v',
 		OPT_VERSION = 'V',
 	};
 
 	static int option_index = 0;
 	static struct option long_options[] = {
-		{ "config",         1, NULL, OPT_CONFIG },
-		{ "help",           0, NULL, OPT_HELP },
-		{ "version",        0, NULL, OPT_VERSION },
+		{ "config",  1, NULL, OPT_CONFIG },
+		{ "help",    0, NULL, OPT_HELP },
+		{ "verbose", 0, NULL, OPT_VERBOSE },
+		{ "version", 0, NULL, OPT_VERSION },
 
 		{NULL, 0, NULL, 0},
 	};
 
 	static const char * config = CONFIG_FILE;
+	short verbose = 0;
 
 	// parse option
 	int opt;
 	do {
-		opt = getopt_long(argc, argv, "c:hV", long_options, &option_index);
+		opt = getopt_long(argc, argv, "c:hvV", long_options, &option_index);
 
 		switch (opt) {
 			case -1:
@@ -87,6 +92,11 @@ int main(int argc, char * argv[]) {
 				sl_show_help();
 				return 0;
 
+			case OPT_VERBOSE:
+				if (verbose < 3)
+					verbose++;
+				break;
+
 			case OPT_VERSION:
 				sl_log_disable_display_log();
 
@@ -99,6 +109,8 @@ int main(int argc, char * argv[]) {
 				return 1;
 		}
 	} while (opt > -1);
+
+	sl_log_set_verbose(verbose);
 
 	// read configuration
 	if (sl_conf_read_config(config)) {
