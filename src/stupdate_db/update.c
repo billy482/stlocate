@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 30 Jul 2013 21:33:29 +0200                         *
+*  Last modified: Sat, 17 Aug 2013 11:49:37 +0200                         *
 \*************************************************************************/
 
 // asprintf, versionsort
@@ -31,22 +31,29 @@
 #include <blkid/blkid.h>
 // versionsort, scandir
 #include <dirent.h>
-// free
+// errno
+#include <errno.h>
+// open
+#include <fcntl.h>
+// realpath
+#include <limits.h>
+// free, realpath
 #include <stdlib.h>
 // asprintf
 #include <stdio.h>
-// strcmp, strdup
+// strcmp, strdup, strlen
 #include <string.h>
-// lstat
+// lstat, open
 #include <sys/stat.h>
 // statfs
 #include <sys/statfs.h>
-// lstat
+// lstat, open
 #include <sys/types.h>
 // time
 #include <time.h>
-// lstat
+// close, lstat, read
 #include <unistd.h>
+
 
 #include <stlocate/database.h>
 #include <stlocate/filesystem.h>
@@ -145,12 +152,18 @@ static int sl_db_update_file(struct sl_database_connection * db, int host_id, in
 					if (sfile->st_dev != ssubfile.st_dev)
 						failed = sl_db_update_filesystem(db, host_id, session_id, subfile);
 					else {
-						free(subfile);
-						if (path != NULL)
-							asprintf(&subfile, "%s/%s", path, nl[i]->d_name);
-						else
-							subfile = strdup(nl[i]->d_name);
-						failed = sl_db_update_file(db, host_id, session_id, s2fs, root, subfile, &ssubfile);
+						size_t length = strlen(root);
+						if (length > 1)
+							length++;
+						failed = sl_db_update_file(db, host_id, session_id, s2fs, root, subfile + length, &ssubfile);
+					}
+				} else {
+					switch (errno) {
+						case EACCES:
+							failed = 0;
+
+						default:
+							sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to get information of file '%s' because %s", subfile, strerror(errno));
 					}
 				}
 
@@ -194,10 +207,37 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 		return 0;
 	}
 
-	sl_log_write(sl_log_level_notice, sl_log_type_core, "Update filesystem: { path: %s }", path);
+	char * real_device = realpath(device, NULL);
 
-	// dev can be null
-	blkid_dev dev = blkid_get_dev(cache, device, 0);
+	blkid_dev dev = blkid_get_dev(cache, real_device, 0);
+	// find alternative name
+	if (dev == NULL) {
+		char * sys_dev;
+		asprintf(&sys_dev, "/sys/block/%s/dm/name", real_device + 5);
+
+		int fd = open(sys_dev, O_RDONLY);
+		if (fd > -1) {
+			char buf[64];
+			ssize_t nb_read = read(fd, buf, 64);
+			buf[nb_read - 1] = '\0';
+			close(fd);
+
+			free(real_device);
+			asprintf(&real_device, "/dev/mapper/%s", buf);
+
+			dev = blkid_get_dev(cache, real_device, 0);
+		}
+
+		free(sys_dev);
+	}
+	if (dev == NULL) {
+		sl_log_write(sl_log_level_notice, sl_log_type_core, "Skip path: { path: %s } because there is no blkid informations (blkid didn't known filesystem on %s)", path, real_device);
+		free(real_device);
+		free(device);
+		return 0;
+	}
+
+	sl_log_write(sl_log_level_notice, sl_log_type_core, "Update filesystem: { path: %s }", path);
 
 	const char * uuid = NULL;
 	const char * label = NULL;
@@ -218,6 +258,7 @@ static int sl_db_update_filesystem(struct sl_database_connection * db, int host_
 
 	blkid_tag_iterate_end(iter);
 	free(device);
+	free(real_device);
 
 	int s2fs = db->ops->sync_filesystem(db, session_id, fs);
 	if (s2fs < 0) {
