@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Tue, 30 Jul 2013 21:56:08 +0200                         *
+*  Last modified: Sun, 18 Aug 2013 17:32:10 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -34,7 +34,7 @@
 #include <stdarg.h>
 // realloc
 #include <stdlib.h>
-// printf, snprintf
+// printf, snprintf, vasprintf
 #include <stdio.h>
 // strcasecmp, strcmp
 #include <string.h>

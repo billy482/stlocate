@@ -22,13 +22,24 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 10 Aug 2013 17:53:04 +0200                         *
+*  Last modified: Wed, 21 Aug 2013 23:49:59 +0200                         *
 \*************************************************************************/
 
+#define _GNU_SOURCE
 // getopt_long
 #include <getopt.h>
+// dirname
+#include <libgen.h>
+// realpath
+#include <limits.h>
+// bool
+#include <stdbool.h>
 // printf
 #include <stdio.h>
+// free, realpath
+#include <stdlib.h>
+// strcmp, strlen, strrchr
+#include <string.h>
 // lstat
 #include <sys/stat.h>
 // lstat
@@ -43,6 +54,8 @@
 #include <stlocate/log.h>
 #include <stlocate/result.h>
 
+#include "prompt.h"
+
 #include <config.h>
 #include <stlocate.version>
 #include <stmvfile.chcksum>
@@ -55,6 +68,7 @@ int main(int argc, char * argv[]) {
 	enum {
 		OPT_CONFIG  = 'c',
 		OPT_HELP    = 'h',
+		OPT_HOST    = 'H',
 		OPT_VERBOSE = 'v',
 		OPT_VERSION = 'V',
 	};
@@ -63,6 +77,7 @@ int main(int argc, char * argv[]) {
 	static struct option long_options[] = {
 		{ "config",  1, NULL, OPT_CONFIG },
 		{ "help",    0, NULL, OPT_HELP },
+		{ "host",    1, NULL, OPT_HOST },
 		{ "verbose", 0, NULL, OPT_VERBOSE },
 		{ "version", 0, NULL, OPT_VERSION },
 
@@ -70,12 +85,13 @@ int main(int argc, char * argv[]) {
 	};
 
 	static const char * config = CONFIG_FILE;
+	const char * host = NULL;
 	short verbose = 0;
 
 	// parse option
 	int opt;
 	do {
-		opt = getopt_long(argc, argv, "c:hvV", long_options, &option_index);
+		opt = getopt_long(argc, argv, "c:hH:vV", long_options, &option_index);
 
 		switch (opt) {
 			case -1:
@@ -91,6 +107,11 @@ int main(int argc, char * argv[]) {
 
 				sl_show_help();
 				return 0;
+
+			case OPT_HOST:
+				host = optarg;
+				sl_log_write(sl_log_level_notice, sl_log_type_core, "Using alternative host; '%s'", optarg);
+				break;
 
 			case OPT_VERBOSE:
 				if (verbose < 3)
@@ -136,16 +157,28 @@ int main(int argc, char * argv[]) {
 	}
 
 	if (!failed) {
-		static struct utsname name;
-		uname(&name);
+		if (host == NULL) {
+			static struct utsname name;
+			uname(&name);
 
-		int host_id = connect->ops->get_host_by_name(connect, name.nodename);
+			host = name.nodename;
+		}
 
-		for (; optind < argc; optind++) {
+		sl_log_write(sl_log_level_debug, sl_log_type_core, "Looking for host_id of '%s'...", host);
+
+		int host_id = connect->ops->get_host_by_name(connect, host);
+
+		if (host_id < 0) {
+			sl_log_write(sl_log_level_err, sl_log_type_core, "Host '%s' not found", host);
+			failed = 7;
+		} else
+			sl_log_write(sl_log_level_debug, sl_log_type_core, "Host '%s' found with id: %d", host, host_id);
+
+		for (; !failed && optind < argc; optind++) {
 			struct stat st;
 			int failed = stat(argv[optind], &st);
 			if (failed) {
-				printf("failed to get info of '%s' because %m", argv[optind]);
+				sl_log_write(sl_log_level_warn, sl_log_type_core, "failed to get info of '%s' because %m", argv[optind]);
 				continue;
 			}
 
@@ -155,18 +188,72 @@ int main(int argc, char * argv[]) {
 			req.dev_no = st.st_dev;
 			req.inode = st.st_ino;
 
+			char * parent = realpath(argv[optind], NULL);
+			struct stat st_mp;
+			char old = '\0';
+			do {
+				char * slash = strrchr(parent, '/');
+				if (slash != NULL)
+					old = slash[1];
+
+				parent = dirname(parent);
+				failed = stat(parent, &st_mp);
+			} while (!failed && st.st_dev == st_mp.st_dev);
+
+			if (old)
+				parent[strlen(parent)] = old;
+
 			struct sl_result_files * result = connect->ops->find_file(connect, host_id, &req);
 			if (result == NULL) {
-				printf("An error occured when getting result\n");
-				continue;
+				sl_log_write(sl_log_level_err, sl_log_type_core, "An error occured when getting result");
+				free(parent);
+				break;
 			}
 
-			unsigned int i;
-			for (i = 0; i < result->nb_files; i++) {
-				struct sl_result_file * f = result->files + i;
-				printf("%u: %s/%s s:%zd\n", i, f->mount_point, f->path, f->size);
+			if (result->nb_files == 0) {
+				sl_log_write(sl_log_level_info, sl_log_type_core, "No file found: %s", argv[optind]);
+				printf("%s: No file found into database\n", argv[optind]);
+			} else {
+				bool stop = false, move = false;
+				unsigned int index = 0;
+
+				while (!stop) {
+					char * current = realpath(argv[optind], NULL);
+					char * computed;
+					asprintf(&computed, "%s/%s", parent, result->files[index].path);
+
+					if (!strcmp(current, computed)) {
+						printf("File '%s' is already at the correct position\n", argv[optind]);
+						stop = true;
+					} else {
+						printf("There is %u file%c that match '%s' into database\n", result->nb_files, result->nb_files != 1 ? 's' : '\0', argv[optind]);
+						char * action = sl_prompt("Move '%s' to '%s' [yes/Next/quit] ? ", argv[optind], computed);
+
+						if (action == NULL) {
+							printf("\n");
+							stop = true;
+						} else if (!strcmp(action, "q") || !strcmp(action, "quit"))
+							stop = true;
+						else if (!strcmp(action, "y") || !strcmp(action, "yes"))
+							stop = true, move = true;
+						else if (strlen(action) == 0 || !strcmp(action, "next") || !strcmp(action, "next")) {
+							index++;
+							if (index == result->nb_files)
+								index = 0;
+						}
+
+						free(action);
+					}
+
+					free(current);
+					free(computed);
+				}
+
+				if (move) {
+				}
 			}
 
+			free(parent);
 			sl_result_files_free(result);
 		}
 	}
