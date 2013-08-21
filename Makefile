@@ -17,6 +17,8 @@ NAME		:= StLocate
 DIR_NAME	:= $(lastword $(subst /, , $(realpath .)))
 
 
+GIT_HEAD	:= $(shell ./script/git-head.pl)
+
 BINS		:=
 BIN_SYMS	:=
 
@@ -48,7 +50,8 @@ LDFLAGS		:=
 CSCOPE_OPT	:= -b -R -s src -U -I include
 CTAGS_OPT	:= -R src
 
-VERSION_OPT		:= STLOCATE stlocate.version
+VERSION_FILE	:= stlocate.version
+VERSION_OPT		:= STLOCATE ${VERSION_FILE}
 
 
 # sub makefiles
@@ -121,7 +124,8 @@ binaries: prepare $(sort ${BINS})
 
 check:
 	@echo 'Checking source files...'
-	@cppcheck -v --std=c99 $(addprefix -I,${INCLUDE_DIR}) ${SRC_FILES}
+	@cppcheck -v --std=c99 --enable=all $(addprefix -I,${INCLUDE_DIR}) ${SRC_FILES}
+#@splint +posixstrictlib $(addprefix -I,${INCLUDE_DIR}) ${SRC_FILES}
 #-@${CC} -fsyntax-only ${CFLAGS} ${SRC_FILES}
 
 clean:
@@ -155,8 +159,7 @@ install:
 	@cp script/stone.conf ${DESTDIR}/etc/storiq/stone.conf
 	@cp -a www ${DESTDIR}/var/www/stone
 
-prepare: ${BIN_DIRS} ${CHCKSUM_DIR} ${DEP_DIRS} ${OBJ_DIRS} $(addprefix prepare_,${BIN_SYMS}) $(addprefix prepare_,${TEST_BIN_SYMS})
-	@./script/version.pl ${VERSION_OPT}
+prepare: ${BIN_DIRS} ${CHCKSUM_DIR} ${DEP_DIRS} ${OBJ_DIRS} $(addprefix prepare_,${BIN_SYMS}) ${VERSION_FILE}
 
 rebuild: clean all
 
@@ -180,6 +183,10 @@ ${BIN_DIRS} ${CHCKSUM_DIR} ${DEP_DIRS} ${OBJ_DIRS}:
 
 ${NAME}.tar.bz2:
 	${GIT} archive --format=tar --prefix=${DIR_NAME}/ master | bzip2 -9c > $@
+
+${VERSION_FILE}: ${GIT_HEAD}
+	@echo ' GEN      stone.version'
+	@./script/version.pl ${VERSION_OPT}
 
 cscope.out: ${SRC_FILES} ${HEAD_FILES}
 	@echo " CSCOPE"
