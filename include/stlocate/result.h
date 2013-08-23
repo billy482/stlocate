@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 21:13:04 +0200                         *
+*  Last modified: Fri, 23 Aug 2013 09:55:13 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_RESULT_H__
@@ -43,6 +43,10 @@ struct sl_result_files {
 		int session_id;
 		time_t session_start;
 		time_t session_end;
+
+		int fs_id;
+		char * fs_uuid;
+		char * fs_label;
 
 		dev_t dev_no;
 		char * mount_point;

@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 20:33:50 +0200                         *
+*  Last modified: Fri, 23 Aug 2013 09:55:10 +0200                         *
 \*************************************************************************/
 
 // free
@@ -40,6 +40,8 @@ void sl_request_init(struct sl_request * request) {
 
 
 void sl_result_file_free(struct sl_result_file * file) {
+	free(file->fs_uuid);
+	free(file->fs_label);
 	free(file->mount_point);
 	free(file->path);
 }

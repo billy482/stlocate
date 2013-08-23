@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 20 Jul 2013 21:17:42 +0200                         *
+*  Last modified: Fri, 23 Aug 2013 21:29:42 +0200                         *
 \*************************************************************************/
 
 #ifndef __STLOCATE_DATABASE_H__
@@ -127,6 +127,7 @@ struct sl_database_connection {
 		int (*sync_filesystem)(struct sl_database_connection * connect, int session_id, struct sl_filesystem * fs);
 
 		struct sl_result_files * (*find_file)(struct sl_database_connection * connect, int host_id, struct sl_request * request);
+		struct sl_result_file * (*get_file_info)(struct sl_database_connection * connect, int session_id, int fs_id, const char * path);
 	} * ops;
 
 	/**

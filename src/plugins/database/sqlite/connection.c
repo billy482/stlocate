@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 10 Aug 2013 17:54:43 +0200                         *
+*  Last modified: Fri, 23 Aug 2013 21:43:43 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -65,6 +65,7 @@ static int sl_database_sqlite_connection_sync_file(struct sl_database_connection
 static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_connection * connect, int session_id, struct sl_filesystem * fs);
 
 static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_database_connection * connect, int host_id, struct sl_request * request);
+static struct sl_result_file * sl_database_sqlite_connection_get_file_info(struct sl_database_connection * connect, int session_id, int fs_id, const char * path);
 
 static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 	.close                = sl_database_sqlite_connection_close,
@@ -86,7 +87,8 @@ static struct sl_database_connection_ops sl_database_sqlite_connection_ops = {
 	.sync_file        = sl_database_sqlite_connection_sync_file,
 	.sync_filesystem  = sl_database_sqlite_connection_sync_filesystem,
 
-	.find_file = sl_database_sqlite_connection_find,
+	.find_file     = sl_database_sqlite_connection_find,
+	.get_file_info = sl_database_sqlite_connection_get_file_info,
 };
 
 
@@ -554,7 +556,7 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 		return NULL;
 
 	sqlite3_stmt * stmt_select;
-	char * query = sqlite3_mprintf("SELECT s.id, s.start_time, s.end_time, s2f.dev_no, s2f.mount_point, f.inode, f.path, f.mode, f.uid, f.gid, f.size, f.access_time, f.modif_time FROM session s LEFT JOIN session2filesystem s2f ON s.id = s2f.session LEFT JOIN file f ON s2f.id = f.s2fs WHERE s.host = ?1");
+	char * query = sqlite3_mprintf("SELECT s.id, s.start_time, s.end_time, fs.id, fs.uuid, fs.label, s2fs.dev_no, s2fs.mount_point, f.inode, f.path, f.mode, f.uid, f.gid, f.size, f.access_time, f.modif_time FROM session s LEFT JOIN session2filesystem s2fs ON s.id = s2fs.session LEFT JOIN filesystem fs ON s2fs.filesystem = fs.id LEFT JOIN file f ON s2fs.id = f.s2fs WHERE s.host = ?1");
 	int i_param = 2;
 	if (request->session_min_id < request->session_max_id) {
 		char * tmp = query;
@@ -570,7 +572,7 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 
 	if (request->dev_no != (dev_t) -1) {
 		char * tmp = query;
-		query = sqlite3_mprintf("%s AND s2f.dev_no = ?%d", query, i_param);
+		query = sqlite3_mprintf("%s AND s2fs.dev_no = ?%d", query, i_param);
 		sqlite3_free(tmp);
 		i_param++;
 	}
@@ -641,23 +643,81 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 			file->session_start = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 1));
 			file->session_end = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 2));
 
-			file->dev_no = sqlite3_column_int(stmt_select, 3);
-			file->mount_point = strdup((const char *) sqlite3_column_text(stmt_select, 4));
+			file->fs_id = sqlite3_column_int(stmt_select, 3);
+			file->fs_uuid = strdup((const char *) sqlite3_column_text(stmt_select, 4));
+			file->fs_label = NULL;
+			const char * fs_label = (const char *) sqlite3_column_text(stmt_select, 5);
+			if (fs_label != NULL)
+				file->fs_label = strdup(fs_label);
 
-			file->inode = sqlite3_column_int64(stmt_select, 5);
-			file->path = strdup((const char *) sqlite3_column_text(stmt_select, 6));
-			file->mode = sqlite3_column_int(stmt_select, 7);
-			file->uid = sqlite3_column_int(stmt_select, 8);
-			file->gid = sqlite3_column_int(stmt_select, 9);
-			file->size = sqlite3_column_int64(stmt_select, 10);
-			file->atime = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 11));
-			file->mtime = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 12));
+			file->dev_no = sqlite3_column_int(stmt_select, 6);
+			file->mount_point = strdup((const char *) sqlite3_column_text(stmt_select, 7));
+
+			file->inode = sqlite3_column_int64(stmt_select, 8);
+			file->path = strdup((const char *) sqlite3_column_text(stmt_select, 9));
+			file->mode = sqlite3_column_int(stmt_select, 10);
+			file->uid = sqlite3_column_int(stmt_select, 11);
+			file->gid = sqlite3_column_int(stmt_select, 12);
+			file->size = sqlite3_column_int64(stmt_select, 13);
+			file->atime = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 14));
+			file->mtime = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 15));
 
 			failed = sqlite3_step(stmt_select);
 		} while (failed == SQLITE_ROW);
 	}
 
 	sqlite3_finalize(stmt_select);
+
+	return result;
+}
+
+static struct sl_result_file * sl_database_sqlite_connection_get_file_info(struct sl_database_connection * connect, int session_id, int fs_id, const char * path) {
+	struct sl_database_sqlite_connection_private * self = connect->data;
+	if (self->db_handler == NULL)
+		return NULL;
+
+	sqlite3_stmt * stmt_select;
+	char * query = "SELECT s.id, s.start_time, s.end_time, fs.id, fs.uuid, fs.label, s2fs.dev_no, s2fs.mount_point, f.inode, f.path, f.mode, f.uid, f.gid, f.size, f.access_time, f.modif_time FROM session s LEFT JOIN session2filesystem s2fs ON s.id = s2fs.session LEFT JOIN filesystem fs ON s2fs.filesystem = fs.id LEFT JOIN file f ON s2fs.id = f.s2fs WHERE s.id = ?1 AND s2fs.filesystem = ?2 AND f.path = ?3 LIMIT 1";
+
+	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_select, NULL);
+	if (failed) {
+		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'get file info'");
+		return NULL;
+	}
+
+	sqlite3_bind_int(stmt_select, 1, session_id);
+	sqlite3_bind_int(stmt_select, 2, fs_id);
+	sqlite3_bind_text(stmt_select, 3, path, -1, SQLITE_STATIC);
+
+	failed = sqlite3_step(stmt_select);
+
+	struct sl_result_file * result = NULL;
+	if (failed == SQLITE_ROW) {
+		result = malloc(sizeof(struct sl_result_file));
+
+		result->session_id = sqlite3_column_int(stmt_select, 0);
+		result->session_start = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 1));
+		result->session_end = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 2));
+
+		result->fs_id = sqlite3_column_int(stmt_select, 3);
+		result->fs_uuid = strdup((const char *) sqlite3_column_text(stmt_select, 4));
+		result->fs_label = NULL;
+		const char * fs_label = (const char *) sqlite3_column_text(stmt_select, 5);
+		if (fs_label != NULL)
+			result->fs_label = strdup(fs_label);
+
+		result->dev_no = sqlite3_column_int(stmt_select, 6);
+		result->mount_point = strdup((const char *) sqlite3_column_text(stmt_select, 7));
+
+		result->inode = sqlite3_column_int64(stmt_select, 8);
+		result->path = strdup((const char *) sqlite3_column_text(stmt_select, 9));
+		result->mode = sqlite3_column_int(stmt_select, 10);
+		result->uid = sqlite3_column_int(stmt_select, 11);
+		result->gid = sqlite3_column_int(stmt_select, 12);
+		result->size = sqlite3_column_int64(stmt_select, 13);
+		result->atime = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 14));
+		result->mtime = sl_database_sqlite_util_convert_to_time((const char *) sqlite3_column_text(stmt_select, 15));
+	}
 
 	return result;
 }

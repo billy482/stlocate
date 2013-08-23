@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Wed, 21 Aug 2013 23:49:59 +0200                         *
+*  Last modified: Fri, 23 Aug 2013 22:46:23 +0200                         *
 \*************************************************************************/
 
 #define _GNU_SOURCE
@@ -34,19 +34,19 @@
 #include <limits.h>
 // bool
 #include <stdbool.h>
-// printf
+// printf, rename
 #include <stdio.h>
 // free, realpath
 #include <stdlib.h>
 // strcmp, strlen, strrchr
 #include <string.h>
-// lstat
+// lstat, mkdir
 #include <sys/stat.h>
 // lstat
 #include <sys/types.h>
 // uname
 #include <sys/utsname.h>
-// lstat
+// access, chown, lstat
 #include <unistd.h>
 
 #include <stlocate/conf.h>
@@ -217,9 +217,9 @@ int main(int argc, char * argv[]) {
 				bool stop = false, move = false;
 				unsigned int index = 0;
 
+				char * computed;
 				while (!stop) {
 					char * current = realpath(argv[optind], NULL);
-					char * computed;
 					asprintf(&computed, "%s/%s", parent, result->files[index].path);
 
 					if (!strcmp(current, computed)) {
@@ -246,11 +246,64 @@ int main(int argc, char * argv[]) {
 					}
 
 					free(current);
-					free(computed);
 				}
 
 				if (move) {
+					char * computed2 = dirname(computed);
+
+					unsigned short i;
+					for (i = 0; strcmp(computed2, ".") && access(computed2, F_OK); i++)
+						computed2 = dirname(computed2);
+
+					struct sl_result_file * rf = result->files + index;
+
+					if (i > 0) {
+						sl_log_write(sl_log_level_info, sl_log_type_core, "Rebuild path to: %s/%s", parent, rf->path);
+
+						size_t parent_size = strlen(parent) + 1;
+
+						while (!failed && i > 0) {
+							computed[strlen(computed)] = '/';
+							i--;
+
+							sl_log_write(sl_log_level_info, sl_log_type_core, "Restore directory '%s'", computed);
+
+							// find file info into database
+							struct sl_result_file * file = connect->ops->get_file_info(connect, rf->session_id, rf->fs_id, computed + parent_size);
+							if (file != NULL) {
+								failed = mkdir(computed, file->mode);
+								if (failed)
+									sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to create directory '%s' because %m", computed);
+
+								if (!failed) {
+									failed = chown(computed, file->uid, file->gid);
+									if (failed)
+										sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to restore owner and group for directory '%s' because %m", computed);
+								}
+
+								sl_result_file_free(file);
+								free(file);
+							} else {
+								// warn, no info of file computed
+								failed = mkdir(computed, 0777);
+								if (failed)
+									sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to create directory '%s' because %m", computed);
+							}
+						}
+					}
+
+					computed[strlen(computed)] = '/';
+
+					if (!failed) {
+						failed = rename(argv[optind], computed);
+						if (failed)
+							sl_log_write(sl_log_level_err, sl_log_type_core, "Failed to move file from '%s' to '%s' because %m", argv[optind], computed);
+						else
+							sl_log_write(sl_log_level_info, sl_log_type_core, "Move file from '%s' to '%s', OK", argv[optind], computed);
+					}
 				}
+
+				free(computed);
 			}
 
 			free(parent);
