@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sat, 17 Aug 2013 11:49:37 +0200                         *
+*  Last modified: Sun, 25 Aug 2013 00:35:27 +0200                         *
 \*************************************************************************/
 
 // asprintf, versionsort
@@ -114,6 +114,7 @@ int sl_db_update(struct sl_database_connection * db, int host_id, int version __
 
 static int sl_db_update_file(struct sl_database_connection * db, int host_id, int session_id, int s2fs, const char * root, const char * path, struct stat * sfile) {
 	static time_t last = 0;
+	static unsigned int nb_file = 0;
 	time_t now = time(NULL);
 
 	char * file;
@@ -122,9 +123,12 @@ static int sl_db_update_file(struct sl_database_connection * db, int host_id, in
 	else
 		file = strdup(root);
 
+	nb_file++;
+
 	if (now > last) {
-		sl_log_write(sl_log_level_debug, sl_log_type_core, "Current file: %s", file);
+		sl_log_write(sl_log_level_debug, sl_log_type_core, "Current file: %s, nb file: %u", file, nb_file);
 		last = now;
+		nb_file = 0;
 	}
 
 	int failed = db->ops->sync_file(db, s2fs, path != NULL ? path : "/", sfile);

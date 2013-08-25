@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Fri, 23 Aug 2013 21:43:43 +0200                         *
+*  Last modified: Sun, 25 Aug 2013 12:51:57 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -35,17 +35,21 @@
 #include <sys/stat.h>
 
 #include <stlocate/filesystem.h>
+#include <stlocate/hashtable.h>
 #include <stlocate/log.h>
 #include <stlocate/result.h>
+#include <stlocate/string.h>
 
 #include "common.h"
 
 struct sl_database_sqlite_connection_private {
 	sqlite3 * db_handler;
+	struct sl_hashtable * prepared_queries;
 };
 
 static int sl_database_sqlite_connection_close(struct sl_database_connection * connect);
 static int sl_database_sqlite_connection_free(struct sl_database_connection * connect);
+static void sl_database_sqlite_connection_hash_free(void * key, void * value);
 static bool sl_database_sqlite_connection_is_connection_closed(struct sl_database_connection * connect);
 
 static int sl_database_sqlite_connection_cancel_transaction(struct sl_database_connection * connect);
@@ -55,6 +59,7 @@ static int sl_database_sqlite_connection_start_transaction(struct sl_database_co
 static int sl_database_sqlite_connection_create_database(struct sl_database_connection * connect, int version);
 static int sl_database_sqlite_connection_exec(sqlite3 * db, const char * query);
 static int sl_database_sqlite_connection_get_database_version(struct sl_database_connection * connect);
+static sqlite3_stmt * sl_database_sqlite_connection_prepare(struct sl_database_sqlite_connection_private * self, const char * query);
 
 static int sl_database_sqlite_connection_delete_old_session(struct sl_database_connection * connect, int host_id, int nb_session_kept);
 static int sl_database_sqlite_connection_end_session(struct sl_database_connection * connect, int session_id);
@@ -104,6 +109,7 @@ struct sl_database_connection * sl_database_sqlite_connection_add(struct sl_data
 
 	struct sl_database_sqlite_connection_private * self = malloc(sizeof(struct sl_database_sqlite_connection_private));
 	self->db_handler = handler;
+	self->prepared_queries = sl_hashtable_new2(sl_string_compute_hash, sl_database_sqlite_connection_hash_free);
 
 	struct sl_database_connection * connection = malloc(sizeof(struct sl_database_connection));
 	connection->ops = &sl_database_sqlite_connection_ops;
@@ -125,6 +131,9 @@ static int sl_database_sqlite_connection_close(struct sl_database_connection * c
 		self->db_handler = NULL;
 	}
 
+	sl_hashtable_free(self->prepared_queries);
+	self->prepared_queries = NULL;
+
 	return failed != SQLITE_OK;
 }
 
@@ -142,6 +151,11 @@ static int sl_database_sqlite_connection_free(struct sl_database_connection * co
 	free(connect);
 
 	return 0;
+}
+
+static void sl_database_sqlite_connection_hash_free(void * key, void * value) {
+	free(key);
+	sqlite3_finalize(value);
 }
 
 static bool sl_database_sqlite_connection_is_connection_closed(struct sl_database_connection * connect) {
@@ -277,27 +291,36 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 	if (self->db_handler == NULL)
 		return 1;
 
-	sqlite3_stmt * smt;
 	static const char * query = "SELECT value FROM config WHERE key = \"version\" LIMIT 1";
-	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &smt, NULL);
-	if (failed != SQLITE_OK) {
+	sqlite3_stmt * smt = sl_database_sqlite_connection_prepare(self, query);
+	if (smt == NULL) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to prepare query '%s', because %s", query, sqlite3_errmsg(self->db_handler));
 		return -1;
 	}
 
-	failed = sqlite3_step(smt);
+	int failed = sqlite3_step(smt);
 	if (failed != SQLITE_ROW) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to execute prepared query '%s'", query);
-		sqlite3_finalize(smt);
 		return -1;
 	}
 
-	int version = 0;
-	version = sqlite3_column_int(smt, 0);
+	return sqlite3_column_int(smt, 0);
+}
 
-	sqlite3_finalize(smt);
+static sqlite3_stmt * sl_database_sqlite_connection_prepare(struct sl_database_sqlite_connection_private * self, const char * query) {
+	if (sl_hashtable_has_key(self->prepared_queries, query)) {
+		struct sl_hashtable_value val = sl_hashtable_get(self->prepared_queries, query);
+		return val.value.custom;
+	}
 
-	return version;
+	sqlite3_stmt * query_smt;
+	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &query_smt, NULL);
+	if (!failed) {
+		sl_hashtable_put(self->prepared_queries, strdup(query), sl_hashtable_val_custom(query_smt));
+		return query_smt;
+	}
+
+	return NULL;
 }
 
 
@@ -305,6 +328,9 @@ static int sl_database_sqlite_connection_delete_old_session(struct sl_database_c
 	struct sl_database_sqlite_connection_private * self = connect->data;
 	if (self->db_handler == NULL)
 		return 1;
+
+	sl_hashtable_free(self->prepared_queries);
+	self->prepared_queries = sl_hashtable_new2(sl_string_compute_hash, sl_database_sqlite_connection_hash_free);
 
 	sqlite3_stmt * stmt_ctt;
 	static const char * query_ctt = "CREATE TEMP TABLE remove_session AS SELECT s1.id AS session FROM session s1 LEFT JOIN session s2 ON s1.id < s2.id AND s1.host = s2.host WHERE s1.host = ?1 GROUP BY s1.id HAVING COUNT(s2.id) >= ?2";
@@ -359,20 +385,16 @@ static int sl_database_sqlite_connection_end_session(struct sl_database_connecti
 	if (self->db_handler == NULL)
 		return 1;
 
-	sqlite3_stmt * stmt_update;
 	static const char * query = "UPDATE session SET end_time = datetime('now') WHERE id = ?1";
-	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_update, NULL);
-	if (failed) {
+	sqlite3_stmt * stmt_update = sl_database_sqlite_connection_prepare(self, query);
+	if (stmt_update == NULL) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'update session'");
 		return -1;
 	}
 
 	sqlite3_bind_int(stmt_update, 1, session_id);
-	failed = sqlite3_step(stmt_update);
 
-	sqlite3_finalize(stmt_update);
-
-	return failed != SQLITE_DONE;
+	return sqlite3_step(stmt_update) != SQLITE_DONE;
 }
 
 static int sl_database_sqlite_connection_start_session(struct sl_database_connection * connect, int host_id) {
@@ -380,21 +402,20 @@ static int sl_database_sqlite_connection_start_session(struct sl_database_connec
 	if (self->db_handler == NULL)
 		return 1;
 
-	sqlite3_stmt * stmt_insert;
 	static const char * query = "INSERT INTO session(start_time, host) VALUES (datetime('now'), ?1)";
-	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_insert, NULL);
-	if (failed) {
+	sqlite3_stmt * stmt_insert = sl_database_sqlite_connection_prepare(self, query);
+	if (stmt_insert == NULL) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into session'");
 		return -1;
 	}
 
 	sqlite3_bind_int(stmt_insert, 1, host_id);
-	failed = sqlite3_step(stmt_insert);
+	int failed = sqlite3_step(stmt_insert);
 
-	int session_id = sqlite3_last_insert_rowid(self->db_handler);
-	sqlite3_finalize(stmt_insert);
+	if (failed != SQLITE_DONE)
+		return -1;
 
-	return session_id;
+	return sqlite3_last_insert_rowid(self->db_handler);
 }
 
 
@@ -403,40 +424,30 @@ static int sl_database_sqlite_connection_get_host_by_name(struct sl_database_con
 	if (self->db_handler == NULL)
 		return 1;
 
-	sqlite3_stmt * stmt_select;
 	static const char * query = "SELECT id FROM host WHERE name = ?1 LIMIT 1";
-	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_select, NULL);
-	if (failed) {
+	sqlite3_stmt * stmt_select = sl_database_sqlite_connection_prepare(self, query);
+	if (stmt_select == NULL) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'get host by name'");
 		return -1;
 	}
 
 	sqlite3_bind_text(stmt_select, 1, hostname, -1, SQLITE_STATIC);
 
-	failed = sqlite3_step(stmt_select);
+	int failed = sqlite3_step(stmt_select);
 	if (failed == SQLITE_ROW) {
-		int host_id = sqlite3_column_int(stmt_select, 0);
-		sqlite3_finalize(stmt_select);
-		return host_id;
+		return sqlite3_column_int(stmt_select, 0);
 	} else if (failed == SQLITE_DONE) {
-		sqlite3_finalize(stmt_select);
-
 		static const char * insert = "INSERT INTO host(name) VALUES (?1)";
-		sqlite3_stmt * stmt_insert;
-		failed = sqlite3_prepare_v2(self->db_handler, insert, -1, &stmt_insert, NULL);
-		if (failed) {
+		sqlite3_stmt * stmt_insert = sl_database_sqlite_connection_prepare(self, insert);
+		if (stmt_insert == NULL) {
 			sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into host'");
-			sqlite3_finalize(stmt_select);
 			return -2;
 		}
 
 		sqlite3_bind_text(stmt_insert, 1, hostname, -1, SQLITE_STATIC);
 		failed = sqlite3_step(stmt_insert);
 
-		int host_id = sqlite3_last_insert_rowid(self->db_handler);
-		sqlite3_finalize(stmt_insert);
-
-		return host_id;
+		return sqlite3_last_insert_rowid(self->db_handler);
 	} else {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to get an host id");
 		return -3;
@@ -449,11 +460,9 @@ static int sl_database_sqlite_connection_sync_file(struct sl_database_connection
 		return 1;
 
 	static const char * insert = "INSERT INTO file(s2fs, inode, path, mode, uid, gid, size, access_time, modif_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime(?8, 'unixepoch'), datetime(?9, 'unixepoch'))";
-	sqlite3_stmt * stmt_insert;
-	int failed = sqlite3_prepare_v2(self->db_handler, insert, -1, &stmt_insert, NULL);
-	if (failed) {
+	sqlite3_stmt * stmt_insert = sl_database_sqlite_connection_prepare(self, insert);
+	if (stmt_insert == NULL) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into file2session'");
-		sqlite3_finalize(stmt_insert);
 		return -4;
 	}
 
@@ -467,12 +476,10 @@ static int sl_database_sqlite_connection_sync_file(struct sl_database_connection
 	sqlite3_bind_int64(stmt_insert, 8, st->st_atime);
 	sqlite3_bind_int64(stmt_insert, 9, st->st_mtime);
 
-	failed = sqlite3_step(stmt_insert);
+	int failed = sqlite3_step(stmt_insert);
 
 	if (failed != SQLITE_DONE)
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to insert new file2session (file id: 0, session id: %d)", s2fs);
-
-	sqlite3_finalize(stmt_insert);
 
 	return failed != SQLITE_DONE;
 }
@@ -482,29 +489,23 @@ static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_conn
 	if (self->db_handler == NULL)
 		return 1;
 
-	sqlite3_stmt * stmt_select;
 	static const char * query = "SELECT id FROM filesystem WHERE uuid = ?1 LIMIT 1";
-	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_select, NULL);
-	if (failed) {
+	sqlite3_stmt * stmt_select = sl_database_sqlite_connection_prepare(self, query);
+	if (stmt_select == NULL) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'get host by uuid'");
 		return -1;
 	}
 
 	sqlite3_bind_text(stmt_select, 1, fs->uuid, -1, SQLITE_STATIC);
 
-	failed = sqlite3_step(stmt_select);
+	int failed = sqlite3_step(stmt_select);
 	if (failed == SQLITE_ROW) {
 		fs->id = sqlite3_column_int(stmt_select, 0);
-		sqlite3_finalize(stmt_select);
 	} else if (failed == SQLITE_DONE) {
-		sqlite3_finalize(stmt_select);
-
 		static const char * insert = "INSERT INTO filesystem(uuid, label, type) VALUES (?1, ?2, ?3)";
-		sqlite3_stmt * stmt_insert;
-		failed = sqlite3_prepare_v2(self->db_handler, insert, -1, &stmt_insert, NULL);
-		if (failed) {
+		sqlite3_stmt * stmt_insert = sl_database_sqlite_connection_prepare(self, insert);
+		if (stmt_insert == NULL) {
 			sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into filesystem'");
-			sqlite3_finalize(stmt_select);
 			return -2;
 		}
 
@@ -515,18 +516,15 @@ static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_conn
 
 		if (failed == SQLITE_DONE)
 			fs->id = sqlite3_last_insert_rowid(self->db_handler);
-		sqlite3_finalize(stmt_insert);
 	} else {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: failed to get an host id");
 		return -3;
 	}
 
 	static const char * insert = "INSERT INTO session2filesystem(session, filesystem, mount_point, dev_no, disk_free, disk_total, block_size) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
-	sqlite3_stmt * stmt_insert;
-	failed = sqlite3_prepare_v2(self->db_handler, insert, -1, &stmt_insert, NULL);
-	if (failed) {
+	sqlite3_stmt * stmt_insert = sl_database_sqlite_connection_prepare(self, insert);
+	if (stmt_insert == NULL) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'insert into session2filesystem'");
-		sqlite3_finalize(stmt_select);
 		return -4;
 	}
 
@@ -539,14 +537,10 @@ static int sl_database_sqlite_connection_sync_filesystem(struct sl_database_conn
 	sqlite3_bind_int(stmt_insert, 7, fs->block_size);
 	failed = sqlite3_step(stmt_insert);
 
-	if (failed != SQLITE_DONE) {
-		sqlite3_finalize(stmt_insert);
+	if (failed != SQLITE_DONE)
 		return -5;
-	}
 
-	int s2f_id = sqlite3_last_insert_rowid(self->db_handler);
-	sqlite3_finalize(stmt_insert);
-	return s2f_id;
+	return sqlite3_last_insert_rowid(self->db_handler);
 }
 
 
@@ -555,7 +549,6 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 	if (self->db_handler == NULL)
 		return NULL;
 
-	sqlite3_stmt * stmt_select;
 	char * query = sqlite3_mprintf("SELECT s.id, s.start_time, s.end_time, fs.id, fs.uuid, fs.label, s2fs.dev_no, s2fs.mount_point, f.inode, f.path, f.mode, f.uid, f.gid, f.size, f.access_time, f.modif_time FROM session s LEFT JOIN session2filesystem s2fs ON s.id = s2fs.session LEFT JOIN filesystem fs ON s2fs.filesystem = fs.id LEFT JOIN file f ON s2fs.id = f.s2fs WHERE s.host = ?1");
 	int i_param = 2;
 	if (request->session_min_id < request->session_max_id) {
@@ -588,10 +581,10 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 	query = sqlite3_mprintf("%s ORDER BY s.id DESC", query);
 	sqlite3_free(tmp);
 
-	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_select, NULL);
+	sqlite3_stmt * stmt_select = sl_database_sqlite_connection_prepare(self, query);
 	sqlite3_free(query);
 
-	if (failed) {
+	if (stmt_select == NULL) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'get file'");
 		return NULL;
 	}
@@ -617,10 +610,8 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 		i_param++;
 	}
 
-	failed = sqlite3_step(stmt_select);
-
+	int failed = sqlite3_step(stmt_select);
 	struct sl_result_files * result = NULL;
-
 	if (failed == SQLITE_ROW) {
 		result = malloc(sizeof(struct sl_result_files));
 		result->files = NULL;
@@ -630,7 +621,6 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 			void * new_addr = realloc(result->files, (result->nb_files + 1) * sizeof(struct sl_result_file));
 			if (new_addr == NULL) {
 				sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: not enough memory to get result");
-				sqlite3_finalize(stmt_select);
 				sl_result_files_free(result);
 				return NULL;
 			}
@@ -666,8 +656,6 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 		} while (failed == SQLITE_ROW);
 	}
 
-	sqlite3_finalize(stmt_select);
-
 	return result;
 }
 
@@ -676,11 +664,9 @@ static struct sl_result_file * sl_database_sqlite_connection_get_file_info(struc
 	if (self->db_handler == NULL)
 		return NULL;
 
-	sqlite3_stmt * stmt_select;
 	char * query = "SELECT s.id, s.start_time, s.end_time, fs.id, fs.uuid, fs.label, s2fs.dev_no, s2fs.mount_point, f.inode, f.path, f.mode, f.uid, f.gid, f.size, f.access_time, f.modif_time FROM session s LEFT JOIN session2filesystem s2fs ON s.id = s2fs.session LEFT JOIN filesystem fs ON s2fs.filesystem = fs.id LEFT JOIN file f ON s2fs.id = f.s2fs WHERE s.id = ?1 AND s2fs.filesystem = ?2 AND f.path = ?3 LIMIT 1";
-
-	int failed = sqlite3_prepare_v2(self->db_handler, query, -1, &stmt_select, NULL);
-	if (failed) {
+	sqlite3_stmt * stmt_select = sl_database_sqlite_connection_prepare(self, query);
+	if (stmt_select == NULL) {
 		sl_log_write(sl_log_level_err, sl_log_type_plugin_database, "Sqlite: error while preparing query 'get file info'");
 		return NULL;
 	}
@@ -689,7 +675,7 @@ static struct sl_result_file * sl_database_sqlite_connection_get_file_info(struc
 	sqlite3_bind_int(stmt_select, 2, fs_id);
 	sqlite3_bind_text(stmt_select, 3, path, -1, SQLITE_STATIC);
 
-	failed = sqlite3_step(stmt_select);
+	int failed = sqlite3_step(stmt_select);
 
 	struct sl_result_file * result = NULL;
 	if (failed == SQLITE_ROW) {
