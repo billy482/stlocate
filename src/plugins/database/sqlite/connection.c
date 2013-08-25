@@ -22,7 +22,7 @@
 *                                                                         *
 *  ---------------------------------------------------------------------  *
 *  Copyright (C) 2013, Clercin guillaume <gclercin@intellique.com>        *
-*  Last modified: Sun, 25 Aug 2013 12:51:57 +0200                         *
+*  Last modified: Sun, 25 Aug 2013 20:23:35 +0200                         *
 \*************************************************************************/
 
 // free, malloc
@@ -310,6 +310,7 @@ static int sl_database_sqlite_connection_get_database_version(struct sl_database
 static sqlite3_stmt * sl_database_sqlite_connection_prepare(struct sl_database_sqlite_connection_private * self, const char * query) {
 	if (sl_hashtable_has_key(self->prepared_queries, query)) {
 		struct sl_hashtable_value val = sl_hashtable_get(self->prepared_queries, query);
+		sqlite3_reset(val.value.custom);
 		return val.value.custom;
 	}
 
@@ -654,6 +655,10 @@ static struct sl_result_files * sl_database_sqlite_connection_find(struct sl_dat
 
 			failed = sqlite3_step(stmt_select);
 		} while (failed == SQLITE_ROW);
+	} else if (failed == SQLITE_DONE) {
+		result = malloc(sizeof(struct sl_result_files));
+		result->files = NULL;
+		result->nb_files = 0;
 	}
 
 	return result;
